@@ -12,18 +12,20 @@ class EnemyTank extends PositionComponent with CollisionCallbacks {
   late final TextPaint nameTextPaint;
   late final double nameWidth;
 
-  final Paint bodyPaint = Paint()..color = const Color.fromARGB(255, 16, 14, 114);
-  final Paint barrelPaint = Paint()..color = Colors.blue..strokeWidth = 4;
+  final Paint trackPaint = Paint()..color = Colors.black87;
+  final Paint bodyPaint = Paint()..color = const Color.fromARGB(255, 139, 34, 34); 
+  final Paint turretPaint = Paint()..color = const Color.fromARGB(255, 80, 20, 20);
+  final Paint barrelPaint = Paint()..color = Colors.grey.shade400..strokeWidth = 4;
+  
   final Paint hpBasePaint = Paint()..color = Colors.grey;
   final Paint hpCurrentPaint = Paint()..color = Colors.green;
 
   Vector2? targetPosition;
   double? targetAngle;
 
-  EnemyTank({required this.playerName, required Vector2 position}) : super(position: position, size: Vector2(25, 25), anchor: Anchor.center) {
+  EnemyTank({required this.playerName, required Vector2 position}) : super(position: position, size: Vector2(28, 32), anchor: Anchor.center) {
     const textStyle = TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold);
     nameTextPaint = TextPaint(style: textStyle);
-
     final tp = TextPainter(text: TextSpan(text: playerName, style: textStyle), textDirection: TextDirection.ltr);
     tp.layout();
     nameWidth = tp.width;
@@ -52,11 +54,7 @@ class EnemyTank extends PositionComponent with CollisionCallbacks {
     targetPosition = Vector2(newX, newY);
     targetAngle = newAngle;
 
-    // Paket kaybı nedeniyle öldü sanılan tank hareket paketi alıyorsa görünür yapılır
-    if (isDead && health > 0) {
-      isDead = false;
-    }
-
+    if (isDead && health > 0) isDead = false;
     if (position.isZero()) {
       position = targetPosition!.clone();
       angle = targetAngle!;
@@ -68,9 +66,7 @@ class EnemyTank extends PositionComponent with CollisionCallbacks {
     if (isDead) return;
     super.update(dt);
 
-    if (targetPosition != null) {
-      position.lerp(targetPosition!, dt * 15);
-    }
+    if (targetPosition != null) position.lerp(targetPosition!, dt * 15);
     if (targetAngle != null) {
       double diff = (targetAngle! - angle) % (2 * pi);
       if (diff > pi) diff -= 2 * pi;
@@ -83,24 +79,26 @@ class EnemyTank extends PositionComponent with CollisionCallbacks {
   void render(Canvas canvas) {
     if (isDead) return;
 
-    canvas.drawRect(size.toRect(), bodyPaint);
-    canvas.drawLine(Offset(size.x / 2, size.y / 2), Offset(size.x / 2, -20), barrelPaint);
-
-    _drawHealthBar(canvas);
-
     canvas.save();
     canvas.translate(size.x / 2, size.y / 2);
-    canvas.rotate(-angle);
-    nameTextPaint.render(canvas, playerName, Vector2(-nameWidth / 2, -35));
-    canvas.restore();
-  }
 
-  void _drawHealthBar(Canvas canvas) {
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(-14, -16, 6, 32), const Radius.circular(2)), trackPaint);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(8, -16, 6, 32), const Radius.circular(2)), trackPaint);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(-9, -12, 18, 24), const Radius.circular(4)), bodyPaint);
+    canvas.drawLine(Offset.zero, const Offset(0, -25), barrelPaint);
+    canvas.drawCircle(Offset.zero, 7, turretPaint);
+
+    canvas.rotate(-angle);
+
     final barWidth = size.x;
     final barHeight = 5.0;
-    final barOffset = Vector2(-size.x / 2, -size.y / 2 - 10);
+    final barOffset = Vector2(-size.x / 2, -size.y / 2 - 20);
 
     canvas.drawRect(Rect.fromLTWH(barOffset.x, barOffset.y, barWidth, barHeight), hpBasePaint);
     canvas.drawRect(Rect.fromLTWH(barOffset.x, barOffset.y, barWidth * (health / maxHealth), barHeight), hpCurrentPaint);
+
+    nameTextPaint.render(canvas, playerName, Vector2(-nameWidth / 2, -40));
+
+    canvas.restore();
   }
 }

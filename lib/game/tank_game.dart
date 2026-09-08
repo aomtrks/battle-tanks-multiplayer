@@ -8,26 +8,20 @@ import '../components/tank.dart';
 import '../components/enemy_tank.dart';
 import '../components/wall.dart';
 import '../components/bullet.dart';
+import '../components/loot_box.dart';
 import '../network/network_service.dart';
 
 class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   bool isVisible = false;
-
   final Paint bgPaint = Paint()..color = Colors.black87;
-  final TextPaint titlePaint = TextPaint(
-    style: const TextStyle(color: Colors.redAccent, fontSize: 32, fontWeight: FontWeight.bold),
-  );
-  final TextPaint scorePaint = TextPaint(
-    style: const TextStyle(color: Colors.white, fontSize: 20),
-  );
+  final TextPaint titlePaint = TextPaint(style: const TextStyle(color: Colors.redAccent, fontSize: 32, fontWeight: FontWeight.bold));
+  final TextPaint scorePaint = TextPaint(style: const TextStyle(color: Colors.white, fontSize: 20));
 
   @override
   void render(Canvas canvas) {
     if (!isVisible) return;
-
     canvas.drawRect(Rect.fromLTWH(0, 0, gameRef.size.x, gameRef.size.y), bgPaint);
     titlePaint.render(canvas, "ÖLDÜN! SKOR TABLOSU", Vector2(gameRef.size.x / 2 - 160, 40));
-
     double yPos = 100;
     for (var p in gameRef.networkService.lobbyPlayers) {
       scorePaint.render(canvas, "${p['name']} : ${p['score'] ?? 0} Skor", Vector2(gameRef.size.x / 2 - 100, yPos));
@@ -41,24 +35,28 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   late JoystickComponent joystick;
   late Tank playerTank;
   late PositionComponent fireButton;
+  late TextComponent ammoText;
 
   final ScoreboardHUD _scoreboardHUD = ScoreboardHUD();
   final Map<String, EnemyTank> enemies = {};
+  final Map<String, LootBox> loots = {};
+  
+  double _lootTimer = 0;
 
   TankGame({required this.networkService});
 
+  @override
+  Color backgroundColor() {
+    return networkService.selectedMap == 1 ? const Color(0xFFD2B48C) : Colors.blueGrey.shade900;
+  }
+
   Vector2 getSpawnPoint(int index) {
     switch (index % 4) {
-      case 0:
-        return Vector2(100, 100);
-      case 1:
-        return Vector2(1400, 100);
-      case 2:
-        return Vector2(100, 900);
-      case 3:
-        return Vector2(1400, 900);
-      default:
-        return Vector2(750, 500);
+      case 0: return Vector2(100, 100);
+      case 1: return Vector2(1400, 100);
+      case 2: return Vector2(100, 900);
+      case 3: return Vector2(1400, 900);
+      default: return Vector2(750, 500);
     }
   }
 
@@ -74,12 +72,8 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
         int enemySpawnIndex = 0;
         String enemyName = "Bilinmeyen";
         for (var p in networkService.lobbyPlayers) {
-          if (p['id'] == playerId) {
-            enemySpawnIndex = p['spawnIndex'];
-            enemyName = p['name'];
-          }
+          if (p['id'] == playerId) { enemySpawnIndex = p['spawnIndex']; enemyName = p['name']; }
         }
-
         final newEnemy = EnemyTank(playerName: enemyName, position: getSpawnPoint(enemySpawnIndex));
         enemies[playerId] = newEnemy;
         world.add(newEnemy);
@@ -91,12 +85,20 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       _spawnBullet(x, y, angle, ownerId: playerId, isEnemy: true);
     };
 
-    networkService.onHealthUpdate = (playerId, newHealth) {
-      enemies[playerId]?.updateHealth(newHealth);
+    networkService.onHealthUpdate = (playerId, newHealth) => enemies[playerId]?.updateHealth(newHealth);
+    networkService.onPlayerRespawn = (playerId, x, y, angle) => enemies[playerId]?.respawn(x, y, angle);
+
+    networkService.onLootSpawned = (id, type, x, y) {
+      final loot = LootBox(id: id, type: type, position: Vector2(x, y));
+      loots[id] = loot;
+      world.add(loot);
     };
 
-    networkService.onPlayerRespawn = (playerId, x, y, angle) {
-      enemies[playerId]?.respawn(x, y, angle);
+    networkService.onLootCollected = (id) {
+      if (loots.containsKey(id)) {
+        loots[id]?.removeFromParent();
+        loots.remove(id);
+      }
     };
 
     final knobPaint = BasicPalette.blue.withAlpha(200).paint();
@@ -108,10 +110,12 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       margin: const EdgeInsets.only(left: 40, bottom: 40),
     );
 
-    fireButton = CircleComponent(
-      radius: 40,
-      paint: Paint()..color = Colors.red.withAlpha(150),
-      position: Vector2(size.x - 100, size.y - 100),
+    fireButton = CircleComponent(radius: 40, paint: Paint()..color = Colors.red.withAlpha(150), position: Vector2(size.x - 100, size.y - 100));
+
+    ammoText = TextComponent(
+      text: '',
+      textRenderer: TextPaint(style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+      position: Vector2(size.x - 180, size.y - 150),
     );
 
     _createBorders();
@@ -127,46 +131,73 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     camera.follow(playerTank);
     camera.viewport.add(joystick);
     camera.viewport.add(fireButton);
-    camera.viewport.add(_scoreboardHUD); // Tek seferde eklenir, asla silinmez
+    camera.viewport.add(ammoText);
+    camera.viewport.add(_scoreboardHUD);
   }
 
   @override
   void onTapDown(TapDownEvent event) {
     super.onTapDown(event);
-    if (fireButton.containsPoint(event.canvasPosition)) {
-      _shoot();
-    }
+    if (fireButton.containsPoint(event.canvasPosition)) _shoot();
   }
 
   void _shoot() {
     if (playerTank.isDead) return;
+    if (playerTank.ammo == 0) return; 
+    
+    if (playerTank.ammo > 0) playerTank.ammo--;
+
     _spawnBullet(playerTank.position.x, playerTank.position.y, playerTank.angle, ownerId: networkService.myId, isEnemy: false);
     networkService.sendShoot(playerTank.position.x, playerTank.position.y, playerTank.angle);
   }
 
   void _spawnBullet(double x, double y, double angle, {required String ownerId, required bool isEnemy}) {
-    final offset = Vector2(sin(angle) * 20, -cos(angle) * 20);
-    final bullet = Bullet(position: Vector2(x, y) + offset, angle: angle, ownerId: ownerId, isEnemy: isEnemy);
-    world.add(bullet);
+    // NAMLU UCUNDAN ÇIKIŞ HESAPLAMASI (25 Birim İleri)
+    final offset = Vector2(sin(angle) * 25, -cos(angle) * 25);
+    world.add(Bullet(position: Vector2(x, y) + offset, angle: angle, ownerId: ownerId, isEnemy: isEnemy));
   }
 
   @override
   void update(double dt) {
     super.update(dt);
     fireButton.position = Vector2(size.x - 100, size.y - 100);
+    ammoText.position = Vector2(size.x - 180, size.y - 160);
+    
+    ammoText.text = networkService.selectedMap == 1 ? "Mermi: ${playerTank.ammo}" : "Mermi: Sınırsız";
+
+    if (networkService.isHost && networkService.selectedMap == 1) {
+      _lootTimer += dt;
+      if (_lootTimer > 7.0) {
+        _lootTimer = 0;
+        final rand = Random();
+        double x = 150 + rand.nextDouble() * 1200;
+        double y = 150 + rand.nextDouble() * 700;
+        int type = rand.nextBool() ? 0 : 1; 
+        String id = "loot_${DateTime.now().millisecondsSinceEpoch}_${rand.nextInt(100)}";
+        
+        networkService.sendSpawnLoot(id, type, x, y);
+        
+        final loot = LootBox(id: id, type: type, position: Vector2(x, y));
+        loots[id] = loot;
+        world.add(loot);
+      }
+    }
   }
 
   void _createBorders() {
     final double thickness = 20.0;
     final double w = 1500.0;
     final double h = 1000.0;
+    
+    Color wallColor = networkService.selectedMap == 1 ? Colors.brown.shade800 : Colors.grey.shade800;
 
-    world.add(Wall(position: Vector2(0, 0), size: Vector2(w, thickness)));
-    world.add(Wall(position: Vector2(0, h - thickness), size: Vector2(w, thickness)));
-    world.add(Wall(position: Vector2(0, 0), size: Vector2(thickness, h)));
-    world.add(Wall(position: Vector2(w - thickness, 0), size: Vector2(thickness, h)));
+    world.add(Wall(position: Vector2(0, 0), size: Vector2(w, thickness), color: wallColor));
+    world.add(Wall(position: Vector2(0, h - thickness), size: Vector2(w, thickness), color: wallColor));
+    world.add(Wall(position: Vector2(0, 0), size: Vector2(thickness, h), color: wallColor));
+    world.add(Wall(position: Vector2(w - thickness, 0), size: Vector2(thickness, h), color: wallColor));
 
-    final List<List<int>> mapLayout = [
+    final List<List<int>> mapLayout = networkService.selectedMap == 0 
+    ? [ 
       [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
       [0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0],
       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -176,6 +207,16 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       [0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0],
       [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+    ] 
+    : [ 
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+      [0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+      [0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+      [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
     ];
 
     double tileWidth = w / mapLayout[0].length;
@@ -186,6 +227,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
           world.add(Wall(
             position: Vector2(col * tileWidth + 20, row * tileHeight + 20),
             size: Vector2(tileWidth * 0.6, tileHeight * 0.4),
+            color: wallColor,
           ));
         }
       }

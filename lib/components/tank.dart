@@ -14,6 +14,7 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   int health = 5;
   final int maxHealth = 5;
   bool isDead = false;
+  int ammo = -1;
 
   late Vector2 _previousPosition;
   final Vector2 spawnPosition;
@@ -21,8 +22,11 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   late final TextPaint nameTextPaint;
   late final double nameWidth;
 
-  final Paint bodyPaint = Paint()..color = const Color.fromARGB(255, 24, 135, 28);
-  final Paint barrelPaint = Paint()..color = Colors.red..strokeWidth = 4;
+  final Paint trackPaint = Paint()..color = Colors.black87;
+  final Paint bodyPaint = Paint()..color = const Color.fromARGB(255, 34, 139, 34);
+  final Paint turretPaint = Paint()..color = const Color.fromARGB(255, 20, 80, 20);
+  final Paint barrelPaint = Paint()..color = Colors.grey.shade400..strokeWidth = 4;
+  
   final Paint hpBasePaint = Paint()..color = Colors.grey;
   final Paint hpCurrentPaint = Paint()..color = Colors.green;
 
@@ -31,12 +35,13 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   bool _wasMoving = false;
 
   Tank({required this.playerName, required this.spawnPosition, required this.joystick, required this.networkService})
-      : super(position: spawnPosition, size: Vector2(25, 25), anchor: Anchor.center) {
+      : super(position: spawnPosition, size: Vector2(28, 32), anchor: Anchor.center) {
     _previousPosition = position.clone();
+
+    if (networkService.selectedMap == 1) ammo = 10;
 
     const textStyle = TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold);
     nameTextPaint = TextPaint(style: textStyle);
-
     final tp = TextPainter(text: TextSpan(text: playerName, style: textStyle), textDirection: TextDirection.ltr);
     tp.layout();
     nameWidth = tp.width;
@@ -49,13 +54,9 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
 
   void takeDamage(String killerId) {
     if (isDead) return;
-
     health--;
     networkService.sendHealth(health);
-
-    if (health <= 0) {
-      dieAndRespawn(killerId);
-    }
+    if (health <= 0) dieAndRespawn(killerId);
   }
 
   void dieAndRespawn(String killerId) {
@@ -67,6 +68,7 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
 
     Future.delayed(const Duration(milliseconds: 1500), () {
       health = maxHealth;
+      if (networkService.selectedMap == 1) ammo = 10;
       position = spawnPosition.clone();
       _previousPosition = spawnPosition.clone();
       isDead = false;
@@ -98,7 +100,6 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
       networkService.sendPosition(position.x, position.y, angle);
       _timeSinceLastSync = 0;
     }
-
     _wasMoving = isMoving;
   }
 
@@ -106,25 +107,31 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   void render(Canvas canvas) {
     if (isDead) return;
 
-    canvas.drawRect(size.toRect(), bodyPaint);
-    canvas.drawLine(Offset(size.x / 2, size.y / 2), Offset(size.x / 2, -20), barrelPaint);
-
-    _drawHealthBar(canvas);
-
     canvas.save();
+    
+    // Çizim merkezini bileşenin tam ortasına hizala (Dönme Ekseni)
     canvas.translate(size.x / 2, size.y / 2);
-    canvas.rotate(-angle);
-    nameTextPaint.render(canvas, playerName, Vector2(-nameWidth / 2, -35));
-    canvas.restore();
-  }
 
-  void _drawHealthBar(Canvas canvas) {
+    // --- TANK ÇİZİMİ (Kendi açısına göre döner) ---
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(-14, -16, 6, 32), const Radius.circular(2)), trackPaint);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(8, -16, 6, 32), const Radius.circular(2)), trackPaint);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(-9, -12, 18, 24), const Radius.circular(4)), bodyPaint);
+    canvas.drawLine(Offset.zero, const Offset(0, -25), barrelPaint);
+    canvas.drawCircle(Offset.zero, 7, turretPaint);
+
+    // --- UI ÇİZİMİ (Dönüşü iptal et, yazılar düz kalsın) ---
+    canvas.rotate(-angle);
+
     final barWidth = size.x;
     final barHeight = 5.0;
-    final barOffset = Vector2(-size.x / 2, -size.y / 2 - 10);
+    final barOffset = Vector2(-size.x / 2, -size.y / 2 - 20);
 
     canvas.drawRect(Rect.fromLTWH(barOffset.x, barOffset.y, barWidth, barHeight), hpBasePaint);
     canvas.drawRect(Rect.fromLTWH(barOffset.x, barOffset.y, barWidth * (health / maxHealth), barHeight), hpCurrentPaint);
+
+    nameTextPaint.render(canvas, playerName, Vector2(-nameWidth / 2, -40));
+
+    canvas.restore();
   }
 
   @override

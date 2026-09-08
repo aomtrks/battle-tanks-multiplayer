@@ -25,9 +25,11 @@ class _MainMenuState extends State<MainMenu> {
   final NetworkService _networkService = NetworkService();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _ipController = TextEditingController();
+  
   bool _inLobby = false;
   String _hostIp = '';
   List<Map<String, dynamic>> _players = [];
+  int _selectedMapIndex = 0; 
 
   @override
   void initState() {
@@ -46,25 +48,19 @@ class _MainMenuState extends State<MainMenu> {
   }
 
   void _cleanupAndLaunchGame() {
-    // Menü dinleyicileri kapatılarak disposed state hatası önlenir
     _networkService.onLobbyUpdated = null;
     _networkService.onGameStarted = null;
-
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => Scaffold(
-          body: GameWidget(
-            game: TankGame(networkService: _networkService),
-          ),
-        ),
+        builder: (context) => Scaffold(body: GameWidget(game: TankGame(networkService: _networkService))),
       ),
     );
   }
 
   Future<void> _hostRoom() async {
     if (_nameController.text.trim().isEmpty) return;
-    String ip = await _networkService.startHosting(_nameController.text.trim());
+    String ip = await _networkService.startHosting(_nameController.text.trim(), _selectedMapIndex);
     if (!mounted) return;
     setState(() {
       _hostIp = ip;
@@ -77,15 +73,11 @@ class _MainMenuState extends State<MainMenu> {
     if (_nameController.text.trim().isEmpty || _ipController.text.trim().isEmpty) return;
     await _networkService.joinRoom(_ipController.text.trim(), _nameController.text.trim());
     if (!mounted) return;
-    setState(() {
-      _inLobby = true;
-    });
+    setState(() => _inLobby = true);
   }
 
   @override
   void dispose() {
-    _networkService.onLobbyUpdated = null;
-    _networkService.onGameStarted = null;
     _nameController.dispose();
     _ipController.dispose();
     super.dispose();
@@ -96,11 +88,13 @@ class _MainMenuState extends State<MainMenu> {
     return Scaffold(
       backgroundColor: Colors.blueGrey.shade900,
       body: Center(
-        child: Container(
-          width: 500,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-          child: !_inLobby ? _buildJoinScreen() : _buildLobbyScreen(),
+        child: SingleChildScrollView( // KÜÇÜK EKRANLAR İÇİN KAYDIRMA EKLENDİ
+          child: Container(
+            width: 500,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+            child: !_inLobby ? _buildJoinScreen() : _buildLobbyScreen(),
+          ),
         ),
       ),
     );
@@ -111,10 +105,17 @@ class _MainMenuState extends State<MainMenu> {
       mainAxisSize: MainAxisSize.min,
       children: [
         const Text("BATTLE TANKS", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 20),
-        TextField(
-          controller: _nameController,
-          decoration: const InputDecoration(labelText: "Adın", border: OutlineInputBorder()),
+        const SizedBox(height: 15),
+        TextField(controller: _nameController, decoration: const InputDecoration(labelText: "Adın", border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<int>(
+          value: _selectedMapIndex,
+          decoration: const InputDecoration(labelText: "Harita Seçimi (Sadece Kurucu)", border: OutlineInputBorder()),
+          items: const [
+            DropdownMenuItem(value: 0, child: Text("Klasik Labirent")),
+            DropdownMenuItem(value: 1, child: Text("Çöl Arenası (Sınırlı Mermi + Kutu)")),
+          ],
+          onChanged: (val) => setState(() => _selectedMapIndex = val ?? 0),
         ),
         const SizedBox(height: 10),
         ElevatedButton(
@@ -122,11 +123,8 @@ class _MainMenuState extends State<MainMenu> {
           style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
           child: const Text("Oda Kur (Host)"),
         ),
-        const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text("- VEYA -")),
-        TextField(
-          controller: _ipController,
-          decoration: const InputDecoration(labelText: "Kurucunun IP Adresi", border: OutlineInputBorder()),
-        ),
+        const Padding(padding: EdgeInsets.symmetric(vertical: 5), child: Text("- VEYA -")),
+        TextField(controller: _ipController, decoration: const InputDecoration(labelText: "Kurucunun IP Adresi", border: OutlineInputBorder())),
         const SizedBox(height: 10),
         ElevatedButton(
           onPressed: _joinRoom,
@@ -145,10 +143,9 @@ class _MainMenuState extends State<MainMenu> {
         if (_networkService.isHost)
           Padding(
             padding: const EdgeInsets.all(8.0),
-            child: Text("Oda IP: $_hostIp", style: const TextStyle(color: Colors.red, fontSize: 18, fontWeight: FontWeight.bold)),
+            child: Text("Oda IP: $_hostIp\nHarita: ${_networkService.selectedMap == 1 ? 'Çöl' : 'Klasik'}", textAlign: TextAlign.center, style: const TextStyle(color: Colors.red, fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         const Divider(),
-        const Text("Katılan Oyuncular:"),
         SizedBox(
           height: 150,
           child: ListView.builder(
@@ -156,7 +153,6 @@ class _MainMenuState extends State<MainMenu> {
             itemBuilder: (context, index) => ListTile(
               leading: const Icon(Icons.person),
               title: Text(_players[index]['name']),
-              trailing: Text("Köşe ${index + 1}"),
             ),
           ),
         ),
@@ -166,11 +162,6 @@ class _MainMenuState extends State<MainMenu> {
             style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: Colors.redAccent),
             child: const Text("OYUNU BAŞLAT", style: TextStyle(color: Colors.white, fontSize: 18)),
           )
-        else
-          const Padding(
-            padding: EdgeInsets.all(8.0),
-            child: Text("Kurucunun oyunu başlatması bekleniyor...", style: TextStyle(fontStyle: FontStyle.italic)),
-          ),
       ],
     );
   }

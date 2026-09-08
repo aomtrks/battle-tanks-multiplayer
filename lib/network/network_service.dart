@@ -7,6 +7,7 @@ class NetworkService {
 
   bool isHost = false;
   String? hostIp;
+  int selectedMap = 0; // YENİ: Harita ID
 
   final String myId = DateTime.now().millisecondsSinceEpoch.toString();
   String myName = "Oyuncu";
@@ -21,10 +22,15 @@ class NetworkService {
   Function(String playerId, double x, double y, double angle)? onPlayerShoot;
   Function(String playerId, int health)? onHealthUpdate;
   Function(String playerId, double x, double y, double angle)? onPlayerRespawn;
+  
+  // YENİ: Loot Ağ Fonksiyonları
+  Function(String id, int type, double x, double y)? onLootSpawned;
+  Function(String id)? onLootCollected;
 
-  Future<String> startHosting(String name) async {
+  Future<String> startHosting(String name, int mapIndex) async {
     isHost = true;
     myName = name;
+    selectedMap = mapIndex;
     _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
     _socket!.readEventsEnabled = true;
     _listen();
@@ -74,40 +80,26 @@ class NetworkService {
           String senderId = data['id'] ?? '';
           if (senderId == myId) return;
 
-          // --- HOST MANTIĞI ---
           if (isHost) {
             String clientKey = '${datagram.address.address}:${datagram.port}';
-
             if (data['action'] == 'join_lobby') {
-              if (!_clients.containsKey(clientKey)) {
-                _clients[clientKey] = _ClientInfo(datagram.address, datagram.port);
-              }
+              if (!_clients.containsKey(clientKey)) _clients[clientKey] = _ClientInfo(datagram.address, datagram.port);
               int newSpawnIndex = lobbyPlayers.length % 4;
               lobbyPlayers.add({'id': senderId, 'name': data['name'], 'spawnIndex': newSpawnIndex, 'score': 0});
               _broadcastLobby();
             }
 
-            if (data['action'] == 'died') {
-              String killerId = data['killerId'];
-              _processKill(killerId);
-            }
-
-            if (data['action'] != 'join_lobby') {
-              _broadcast(datagram.data, excludeKey: clientKey);
-            }
+            if (data['action'] == 'died') _processKill(data['killerId']);
+            if (data['action'] != 'join_lobby') _broadcast(datagram.data, excludeKey: clientKey);
           }
 
-          // --- HERKES İÇİN ORTAK (İstemci ve Host) ---
           if (data['action'] == 'lobby_update') {
             lobbyPlayers = List<Map<String, dynamic>>.from(data['players']);
+            selectedMap = data['map']; // Harita verisini al
             for (var p in lobbyPlayers) {
               if (p['id'] == myId) mySpawnIndex = p['spawnIndex'];
             }
-            if (onLobbyUpdated != null) {
-              try {
-                onLobbyUpdated!(lobbyPlayers);
-              } catch (_) {}
-            }
+            if (onLobbyUpdated != null) onLobbyUpdated!(lobbyPlayers);
           } else if (data['action'] == 'start_game') {
             if (onGameStarted != null) onGameStarted!();
           } else if (data['action'] == 'move' && onPlayerMove != null) {
@@ -118,6 +110,10 @@ class NetworkService {
             onHealthUpdate!(senderId, data['h']);
           } else if (data['action'] == 'respawn' && onPlayerRespawn != null) {
             onPlayerRespawn!(senderId, (data['x'] as num).toDouble(), (data['y'] as num).toDouble(), (data['a'] as num).toDouble());
+          } else if (data['action'] == 'spawn_loot' && onLootSpawned != null) {
+            onLootSpawned!(data['lootId'], data['type'], (data['x'] as num).toDouble(), (data['y'] as num).toDouble());
+          } else if (data['action'] == 'collect_loot' && onLootCollected != null) {
+            onLootCollected!(data['lootId']);
           }
         } catch (e) {
           print("UDP Hata: $e");
@@ -129,50 +125,36 @@ class NetworkService {
   void _processKill(String killerId) {
     if (!isHost) return;
     for (var p in lobbyPlayers) {
-      if (p['id'] == killerId) {
-        p['score'] = (p['score'] ?? 0) + 1;
-      }
+      if (p['id'] == killerId) p['score'] = (p['score'] ?? 0) + 1;
     }
     _broadcastLobby();
   }
 
   void _broadcastLobby() {
-    _broadcast(utf8.encode(jsonEncode({'action': 'lobby_update', 'players': lobbyPlayers})));
-    if (onLobbyUpdated != null) {
-      try {
-        onLobbyUpdated!(lobbyPlayers);
-      } catch (_) {}
-    }
+    _broadcast(utf8.encode(jsonEncode({'action': 'lobby_update', 'players': lobbyPlayers, 'map': selectedMap})));
+    if (onLobbyUpdated != null) onLobbyUpdated!(lobbyPlayers);
   }
 
   void sendPosition(double x, double y, double angle) => _routeMessage({'action': 'move', 'id': myId, 'x': x, 'y': y, 'a': angle});
-
   void sendShoot(double x, double y, double angle) => _routeMessage({'action': 'shoot', 'id': myId, 'x': x, 'y': y, 'a': angle});
-
   void sendHealth(int health) => _routeMessage({'action': 'health', 'id': myId, 'h': health});
-
   void sendRespawn(double x, double y, double angle) => _routeMessage({'action': 'respawn', 'id': myId, 'x': x, 'y': y, 'a': angle, 'h': 5});
-
   void sendDied(String killerId) {
     _routeMessage({'action': 'died', 'id': myId, 'killerId': killerId});
-    if (isHost) {
-      _processKill(killerId);
-    }
+    if (isHost) _processKill(killerId);
   }
+  
+  // YENİ: Kutu Gönderimleri
+  void sendSpawnLoot(String lootId, int type, double x, double y) => _routeMessage({'action': 'spawn_loot', 'id': myId, 'lootId': lootId, 'type': type, 'x': x, 'y': y});
+  void sendCollectLoot(String lootId) => _routeMessage({'action': 'collect_loot', 'id': myId, 'lootId': lootId});
 
   void _routeMessage(Map<String, dynamic> msg) {
     List<int> bytes = utf8.encode(jsonEncode(msg));
-    if (isHost) {
-      _broadcast(bytes);
-    } else if (hostIp != null) {
-      _sendToHost(msg);
-    }
+    if (isHost) _broadcast(bytes); else if (hostIp != null) _sendToHost(msg);
   }
 
   void _sendToHost(Map<String, dynamic> msg) {
-    if (_socket != null && hostIp != null) {
-      _socket!.send(utf8.encode(jsonEncode(msg)), InternetAddress(hostIp!), port);
-    }
+    if (_socket != null && hostIp != null) _socket!.send(utf8.encode(jsonEncode(msg)), InternetAddress(hostIp!), port);
   }
 
   void _broadcast(List<int> bytes, {String? excludeKey}) {
