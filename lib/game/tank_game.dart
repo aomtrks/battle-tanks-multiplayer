@@ -11,6 +11,7 @@ import '../components/bullet.dart';
 import '../components/loot_box.dart';
 import '../network/network_service.dart';
 
+// --- ANLIK ÖLÜM SKOR EKRANI ---
 class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   bool isVisible = false;
   final Paint bgPaint = Paint()..color = Colors.black87;
@@ -21,7 +22,7 @@ class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   void render(Canvas canvas) {
     if (!isVisible) return;
     canvas.drawRect(Rect.fromLTWH(0, 0, gameRef.size.x, gameRef.size.y), bgPaint);
-    titlePaint.render(canvas, "ÖLDÜN! SKOR TABLOSU", Vector2(gameRef.size.x / 2 - 160, 40));
+    titlePaint.render(canvas, "ÖLDÜN! BEKLE...", Vector2(gameRef.size.x / 2 - 130, 40));
     double yPos = 100;
     for (var p in gameRef.networkService.lobbyPlayers) {
       scorePaint.render(canvas, "${p['name']} : ${p['score'] ?? 0} Skor", Vector2(gameRef.size.x / 2 - 100, yPos));
@@ -30,20 +31,74 @@ class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   }
 }
 
+// --- OYUN SONU LİDERLİK TABLOSU ---
+class EndGameHUD extends PositionComponent with HasGameRef<TankGame> {
+  final Paint bgPaint = Paint()..color = Colors.black87;
+  final TextPaint titlePaint = TextPaint(style: const TextStyle(color: Colors.amber, fontSize: 36, fontWeight: FontWeight.bold));
+  final TextPaint scorePaint = TextPaint(style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold));
+  final TextPaint btnTextPaint = TextPaint(style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold));
+
+  final Paint btnContinuePaint = Paint()..color = Colors.blue.shade700;
+  final Paint btnLeavePaint = Paint()..color = Colors.red.shade700;
+
+  @override
+  void render(Canvas canvas) {
+    final cx = gameRef.size.x / 2;
+    final cy = gameRef.size.y / 2;
+
+    // Arka Plan
+    canvas.drawRect(Rect.fromLTWH(0, 0, gameRef.size.x, gameRef.size.y), bgPaint);
+    titlePaint.render(canvas, "SÜRE BİTTİ - LİDERLİK TABLOSU", Vector2(cx - 280, 40));
+
+    // Skorları büyükten küçüğe sırala
+    List<Map<String, dynamic>> sortedPlayers = List.from(gameRef.networkService.lobbyPlayers);
+    sortedPlayers.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+
+    double yPos = 120;
+    for (int i = 0; i < sortedPlayers.length; i++) {
+      var p = sortedPlayers[i];
+      scorePaint.render(canvas, "${i + 1}. ${p['name']} - ${p['score']} Puan", Vector2(cx - 150, yPos));
+      yPos += 45;
+    }
+
+    // Butonları Çiz
+    canvas.drawRRect(RRect.fromRectAndRadius(gameRef.continueRect, const Radius.circular(8)), btnContinuePaint);
+    btnTextPaint.render(canvas, "Devam Et (Lobi)", Vector2(gameRef.continueRect.left + 20, gameRef.continueRect.top + 15));
+
+    canvas.drawRRect(RRect.fromRectAndRadius(gameRef.exitRect, const Radius.circular(8)), btnLeavePaint);
+    btnTextPaint.render(canvas, "Odadan Çık", Vector2(gameRef.exitRect.left + 35, gameRef.exitRect.top + 15));
+  }
+}
+
 class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   final NetworkService networkService;
+  final VoidCallback onContinue;
+  final VoidCallback onLeave;
+
   late JoystickComponent joystick;
   late Tank playerTank;
   late PositionComponent fireButton;
+  
   late TextComponent ammoText;
+  late TextComponent timerText;
 
   final ScoreboardHUD _scoreboardHUD = ScoreboardHUD();
+  late EndGameHUD _endGameHUD;
+  
   final Map<String, EnemyTank> enemies = {};
   final Map<String, LootBox> loots = {};
   
   double _lootTimer = 0;
+  
+  // Süre Sistemi
+  late double remainingTime;
+  bool isGameOver = false;
 
-  TankGame({required this.networkService});
+  // Tıklama tespiti için oyun sonu buton alanları
+  late Rect continueRect;
+  late Rect exitRect;
+
+  TankGame({required this.networkService, required this.onContinue, required this.onLeave});
 
   @override
   Color backgroundColor() {
@@ -66,6 +121,9 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
+
+    remainingTime = networkService.selectedTime.toDouble();
+    _endGameHUD = EndGameHUD();
 
     networkService.onPlayerMove = (playerId, x, y, angle) {
       if (!enemies.containsKey(playerId)) {
@@ -118,6 +176,12 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       position: Vector2(size.x - 180, size.y - 150),
     );
 
+    timerText = TextComponent(
+      text: '',
+      textRenderer: TextPaint(style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+      position: Vector2(size.x / 2 - 40, 20),
+    );
+
     _createBorders();
 
     playerTank = Tank(
@@ -132,12 +196,24 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     camera.viewport.add(joystick);
     camera.viewport.add(fireButton);
     camera.viewport.add(ammoText);
+    camera.viewport.add(timerText);
     camera.viewport.add(_scoreboardHUD);
   }
 
   @override
   void onTapDown(TapDownEvent event) {
     super.onTapDown(event);
+    
+    // Oyun bittiyse tıklama mantığı sadece butonlara geçer
+    if (isGameOver) {
+      if (continueRect.contains(event.canvasPosition.toOffset())) {
+        onContinue();
+      } else if (exitRect.contains(event.canvasPosition.toOffset())) {
+        onLeave();
+      }
+      return;
+    }
+
     if (fireButton.containsPoint(event.canvasPosition)) _shoot();
   }
 
@@ -152,7 +228,6 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   }
 
   void _spawnBullet(double x, double y, double angle, {required String ownerId, required bool isEnemy}) {
-    // NAMLU UCUNDAN ÇIKIŞ HESAPLAMASI (25 Birim İleri)
     final offset = Vector2(sin(angle) * 25, -cos(angle) * 25);
     world.add(Bullet(position: Vector2(x, y) + offset, angle: angle, ownerId: ownerId, isEnemy: isEnemy));
   }
@@ -160,12 +235,35 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   @override
   void update(double dt) {
     super.update(dt);
+    
+    // Buton rect'lerini ekran boyutuna göre güncelle
+    continueRect = Rect.fromLTWH(size.x / 2 - 180, size.y / 2 + 100, 170, 50);
+    exitRect = Rect.fromLTWH(size.x / 2 + 10, size.y / 2 + 100, 170, 50);
+    
     fireButton.position = Vector2(size.x - 100, size.y - 100);
     ammoText.position = Vector2(size.x - 180, size.y - 160);
-    
+    timerText.position = Vector2(size.x / 2 - 40, 20);
+
     ammoText.text = networkService.selectedMap == 1 ? "Mermi: ${playerTank.ammo}" : "Mermi: Sınırsız";
 
-    if (networkService.isHost && networkService.selectedMap == 1) {
+    if (!isGameOver) {
+      remainingTime -= dt;
+      if (remainingTime <= 0) {
+        remainingTime = 0;
+        isGameOver = true;
+        playerTank.isDead = true; 
+        for (var enemy in enemies.values) {
+          enemy.isDead = true;
+        }
+        camera.viewport.add(_endGameHUD); 
+      }
+    }
+
+    int mins = (remainingTime / 60).floor();
+    int secs = (remainingTime % 60).floor();
+    timerText.text = '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+
+    if (!isGameOver && networkService.isHost && networkService.selectedMap == 1) {
       _lootTimer += dt;
       if (_lootTimer > 7.0) {
         _lootTimer = 0;

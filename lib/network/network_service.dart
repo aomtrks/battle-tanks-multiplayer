@@ -7,7 +7,8 @@ class NetworkService {
 
   bool isHost = false;
   String? hostIp;
-  int selectedMap = 0; // YENİ: Harita ID
+  int selectedMap = 0; 
+  int selectedTime = 60; // YENİ: Süre Değişkeni
 
   final String myId = DateTime.now().millisecondsSinceEpoch.toString();
   String myName = "Oyuncu";
@@ -22,16 +23,15 @@ class NetworkService {
   Function(String playerId, double x, double y, double angle)? onPlayerShoot;
   Function(String playerId, int health)? onHealthUpdate;
   Function(String playerId, double x, double y, double angle)? onPlayerRespawn;
-  
-  // YENİ: Loot Ağ Fonksiyonları
   Function(String id, int type, double x, double y)? onLootSpawned;
   Function(String id)? onLootCollected;
 
-  Future<String> startHosting(String name, int mapIndex) async {
+  Future<String> startHosting(String name) async {
     isHost = true;
     myName = name;
-    selectedMap = mapIndex;
-    _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port);
+    
+    // reuse özelliklerini açıyoruz ki oda çıkış/girişlerinde port kilitlenmesin
+    _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port, reuseAddress: true, reusePort: true);
     _socket!.readEventsEnabled = true;
     _listen();
 
@@ -51,20 +51,38 @@ class NetworkService {
     hostIp = targetIp;
     myName = name;
 
-    _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+    _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0, reuseAddress: true, reusePort: true);
     _socket!.readEventsEnabled = true;
     _listen();
 
     _sendToHost({'action': 'join_lobby', 'id': myId, 'name': myName});
   }
 
+  void updateLobbySettings(int map, int time) {
+    if (!isHost) return;
+    selectedMap = map;
+    selectedTime = time;
+    _broadcastLobby();
+  }
+
   void startGame() {
     if (isHost) {
+      for (var p in lobbyPlayers) p['score'] = 0; // Oyuna girerken skorları sıfırla
+      _broadcastLobby();
       for (int i = 0; i < 3; i++) {
         _broadcast(utf8.encode(jsonEncode({'action': 'start_game'})));
       }
       if (onGameStarted != null) onGameStarted!();
     }
+  }
+
+  void disconnect() {
+    _socket?.close();
+    _socket = null;
+    isHost = false;
+    hostIp = null;
+    lobbyPlayers.clear();
+    _clients.clear();
   }
 
   void _listen() {
@@ -95,11 +113,15 @@ class NetworkService {
 
           if (data['action'] == 'lobby_update') {
             lobbyPlayers = List<Map<String, dynamic>>.from(data['players']);
-            selectedMap = data['map']; // Harita verisini al
+            selectedMap = data['map'] ?? 0;
+            selectedTime = data['time'] ?? 60;
+            
             for (var p in lobbyPlayers) {
               if (p['id'] == myId) mySpawnIndex = p['spawnIndex'];
             }
-            if (onLobbyUpdated != null) onLobbyUpdated!(lobbyPlayers);
+            if (onLobbyUpdated != null) {
+              try { onLobbyUpdated!(lobbyPlayers); } catch (_) {}
+            }
           } else if (data['action'] == 'start_game') {
             if (onGameStarted != null) onGameStarted!();
           } else if (data['action'] == 'move' && onPlayerMove != null) {
@@ -131,8 +153,15 @@ class NetworkService {
   }
 
   void _broadcastLobby() {
-    _broadcast(utf8.encode(jsonEncode({'action': 'lobby_update', 'players': lobbyPlayers, 'map': selectedMap})));
-    if (onLobbyUpdated != null) onLobbyUpdated!(lobbyPlayers);
+    _broadcast(utf8.encode(jsonEncode({
+      'action': 'lobby_update', 
+      'players': lobbyPlayers, 
+      'map': selectedMap,
+      'time': selectedTime
+    })));
+    if (onLobbyUpdated != null) {
+      try { onLobbyUpdated!(lobbyPlayers); } catch (_) {}
+    }
   }
 
   void sendPosition(double x, double y, double angle) => _routeMessage({'action': 'move', 'id': myId, 'x': x, 'y': y, 'a': angle});
@@ -143,8 +172,6 @@ class NetworkService {
     _routeMessage({'action': 'died', 'id': myId, 'killerId': killerId});
     if (isHost) _processKill(killerId);
   }
-  
-  // YENİ: Kutu Gönderimleri
   void sendSpawnLoot(String lootId, int type, double x, double y) => _routeMessage({'action': 'spawn_loot', 'id': myId, 'lootId': lootId, 'type': type, 'x': x, 'y': y});
   void sendCollectLoot(String lootId) => _routeMessage({'action': 'collect_loot', 'id': myId, 'lootId': lootId});
 
