@@ -10,7 +10,7 @@ class EnemyTank extends PositionComponent with CollisionCallbacks, HasGameRef<Ta
   late int maxHealth;
   bool isDead = false;
   
-  bool isShielded = true; // YENİ: Düşmanlar da varsayılan olarak kalkanla doğduğu varsayılır
+  bool isShielded = true; // Düşmanlar da varsayılan olarak kalkanla doğduğu varsayılır
 
   late final TextPaint nameTextPaint;
   late final double nameWidth;

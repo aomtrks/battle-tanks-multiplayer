@@ -11,6 +11,7 @@ import '../components/bullet.dart';
 import '../components/loot_box.dart';
 import '../network/network_service.dart';
 
+// Klasik Süreli Mod İçin Yeniden Doğma Bekleme Ekranı
 class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   bool isVisible = false;
   final Paint bgPaint = Paint()..color = Colors.black87;
@@ -30,6 +31,7 @@ class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   }
 }
 
+// ARENA MODU MİNİMALİST SOL ÜST SKOR TABLOSU
 class LiveTopScoreHUD extends PositionComponent with HasGameRef<TankGame> {
   final TextPaint textPaint = TextPaint(style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold));
 
@@ -48,6 +50,7 @@ class LiveTopScoreHUD extends PositionComponent with HasGameRef<TankGame> {
   }
 }
 
+// OYUN SONU TABLOSU
 class EndGameHUD extends PositionComponent with HasGameRef<TankGame> {
   final Paint bgPaint = Paint()..color = Colors.black87;
   final TextPaint titlePaint = TextPaint(style: const TextStyle(color: Colors.amber, fontSize: 36, fontWeight: FontWeight.bold));
@@ -82,6 +85,7 @@ class EndGameHUD extends PositionComponent with HasGameRef<TankGame> {
   }
 }
 
+// LABİRENT ALGORİTMASI HÜCRESİ
 class MazeCell {
   int x, y;
   bool top = true, right = true, bottom = true, left = true, visited = false;
@@ -112,6 +116,9 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   int currentRound = 1;
   bool isGameOver = false;
   bool _roundEndingTriggered = false; 
+  
+  // Ağ Senkronizasyonu Koruma Süresi (Başlangıç Hatalarını Engeller)
+  double _gracePeriod = 2.5;
 
   late Rect continueRect;
   late Rect exitRect;
@@ -140,7 +147,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       double cellH = 750.0 / r;
       int targetRow = 0, targetCol = 0;
       
-      switch (index % 8) { // 8 uzak noktalı dağıtım
+      switch (index % 8) { 
         case 0: targetRow = 0; targetCol = 0; break; 
         case 1: targetRow = r - 1; targetCol = c - 1; break; 
         case 2: targetRow = 0; targetCol = c - 1; break; 
@@ -153,7 +160,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       return Vector2(targetCol * cellW + cellW / 2, targetRow * cellH + cellH / 2);
     }
     
-    switch (index % 8) { // Normal haritalarda 8 uzak noktalı dağıtım
+    switch (index % 8) { 
       case 0: return Vector2(100, 100);
       case 1: return Vector2(1400, 900);
       case 2: return Vector2(1400, 100);
@@ -175,6 +182,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
     remainingTime = networkService.selectedTime.toDouble();
     _endGameHUD = EndGameHUD();
+    _gracePeriod = 2.5; // İlk yüklendiğinde koruma başlasın
 
     networkService.onPlayerMove = (playerId, x, y, angle) {
       if (!enemies.containsKey(playerId)) {
@@ -214,6 +222,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       currentArenaSeed = seed;
       currentRound = round;
       _roundEndingTriggered = false;
+      _gracePeriod = 2.5; // Her yeni elde 2.5 sn koruma kalkanı ve bekleme sıfırlanır
       
       for (var w in currentWalls) w.removeFromParent();
       currentWalls.clear();
@@ -246,7 +255,6 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     final knobPaint = BasicPalette.blue.withAlpha(200).paint();
     final backgroundPaint = BasicPalette.blue.withAlpha(100).paint();
 
-    // Joystick pozisyonu ayarlara (GameSettings) bağlandı
     joystick = JoystickComponent(
       knob: CircleComponent(radius: 20, paint: knobPaint),
       background: CircleComponent(radius: 50, paint: backgroundPaint),
@@ -288,6 +296,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
     world.add(playerTank);
     
+    // ARENA MODU KAMERA ÖLÇEKLENDİRMESİ
     if (networkService.selectedMap == 3) {
       camera.viewfinder.visibleGameSize = Vector2(1000, 750);
       camera.viewfinder.position = Vector2(500, 375); 
@@ -346,15 +355,18 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     continueRect = Rect.fromLTWH(size.x / 2 - 180, size.y / 2 + 100, 170, 50);
     exitRect = Rect.fromLTWH(size.x / 2 + 10, size.y / 2 + 100, 170, 50);
     
-    // Ateş butonu ve mermi yazısı pozisyonu GameSettings'den (Ayarlar ekranı) okunur
     fireButton.position = Vector2(size.x - GameSettings.fireRight - 80, size.y - GameSettings.fireBottom - 80);
     ammoText.position = Vector2(fireButton.position.x - 80, fireButton.position.y - 40);
-    
     timerText.position = Vector2(size.x / 2 - 40, 20);
+    ammoText.text = networkService.selectedMap == 1 ? "Mermi: ${playerTank.ammo}" : "Mermi: Sınırsız";
 
     if (!isGameOver) {
       if (networkService.selectedMap == 3) {
-        if (networkService.isHost && !_roundEndingTriggered) {
+        
+        // Eğer gracePeriod (bekleme süresi) bitmediyse, el sonu kontrolü yapma
+        if (_gracePeriod > 0) {
+          _gracePeriod -= dt;
+        } else if (networkService.isHost && !_roundEndingTriggered) {
           int aliveCount = 0;
           String? lastAliveId;
           
@@ -399,6 +411,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       }
     }
 
+    // TÜM HARİTALARDA LOOT DAĞILIMI
     if (!isGameOver && networkService.isHost) {
       _lootTimer += dt;
       if (_lootTimer > 7.0) {
@@ -412,18 +425,16 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
         
         int type;
         if (networkService.selectedMap == 3) {
+          // Arena: Kalkan(2), Roket(3), Lazer(4)
           type = 2 + rand.nextInt(3); 
         } else if (networkService.selectedMap == 1) {
-          // Yüzdelik (Ağırlıklı) Şans Sistemi
-          int chance = rand.nextInt(100); // 0 ile 99 arası sayı üretir
-          if (chance < 60) {
-            type = 1; // %60 İhtimalle Mermi Çıkar
-          } else if (chance < 80) {
-            type = 0; // %20 İhtimalle Can Çıkar
-          } else {
-            type = 2; // %20 İhtimalle Kalkan Çıkar
-          }
+          // Çöl: Yüzdelik Oran Sistemi (%60 Mermi, %20 Can, %20 Kalkan)
+          int chance = rand.nextInt(100);
+          if (chance < 60) type = 1; 
+          else if (chance < 80) type = 0; 
+          else type = 2; 
         } else {
+          // Diğerleri: Can(0), Kalkan(2)
           type = rand.nextBool() ? 0 : 2; 
         }
         

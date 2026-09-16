@@ -16,7 +16,7 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   bool isDead = false;
   int ammo = -1;
   
-  int nextShotType = 0; // YENİ: 0(Normal), 3(Roket), 4(Lazer)
+  int nextShotType = 0; // 0(Normal), 3(Roket), 4(Lazer)
 
   bool isShielded = true; 
   double shieldTimer = 5.0; 
