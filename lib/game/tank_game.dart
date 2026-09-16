@@ -127,6 +127,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     return Colors.blueGrey.shade900;
   }
 
+  // 8 Farklı UZAK Nokta Havuzu Ataması
   Vector2 getSpawnPoint(int index, {int? seed}) {
     if (networkService.selectedMap == 3) {
       int r = 5, c = 7;
@@ -139,20 +140,28 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       double cellH = 750.0 / r;
       int targetRow = 0, targetCol = 0;
       
-      switch (index % 4) {
+      switch (index % 8) { // 8 uzak noktalı dağıtım
         case 0: targetRow = 0; targetCol = 0; break; 
         case 1: targetRow = r - 1; targetCol = c - 1; break; 
         case 2: targetRow = 0; targetCol = c - 1; break; 
         case 3: targetRow = r - 1; targetCol = 0; break; 
+        case 4: targetRow = 0; targetCol = c ~/ 2; break; 
+        case 5: targetRow = r - 1; targetCol = c ~/ 2; break; 
+        case 6: targetRow = r ~/ 2; targetCol = 0; break; 
+        case 7: targetRow = r ~/ 2; targetCol = c - 1; break; 
       }
       return Vector2(targetCol * cellW + cellW / 2, targetRow * cellH + cellH / 2);
     }
     
-    switch (index % 4) {
+    switch (index % 8) { // Normal haritalarda 8 uzak noktalı dağıtım
       case 0: return Vector2(100, 100);
-      case 1: return Vector2(1400, 100);
-      case 2: return Vector2(100, 900);
-      case 3: return Vector2(1400, 900);
+      case 1: return Vector2(1400, 900);
+      case 2: return Vector2(1400, 100);
+      case 3: return Vector2(100, 900);
+      case 4: return Vector2(750, 100);
+      case 5: return Vector2(750, 900);
+      case 6: return Vector2(100, 500);
+      case 7: return Vector2(1400, 500);
       default: return Vector2(750, 500);
     }
   }
@@ -219,7 +228,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       playerTank.isDead = false;
       playerTank.isShielded = true; 
       playerTank.shieldTimer = 5.0;
-      playerTank.nextShotType = 0; // Elde kalan roketi/lazeri sıfırla
+      playerTank.nextShotType = 0; 
       playerTank.position = getSpawnPoint(networkService.mySpawnIndex, seed: seed);
       playerTank.angle = 0;
       networkService.sendRespawn(playerTank.position.x, playerTank.position.y, 0);
@@ -237,18 +246,18 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     final knobPaint = BasicPalette.blue.withAlpha(200).paint();
     final backgroundPaint = BasicPalette.blue.withAlpha(100).paint();
 
+    // Joystick pozisyonu ayarlara (GameSettings) bağlandı
     joystick = JoystickComponent(
       knob: CircleComponent(radius: 20, paint: knobPaint),
       background: CircleComponent(radius: 50, paint: backgroundPaint),
-      margin: const EdgeInsets.only(left: 40, bottom: 40),
+      margin: EdgeInsets.only(left: GameSettings.joyLeft, bottom: GameSettings.joyBottom),
     );
 
-    fireButton = CircleComponent(radius: 40, paint: Paint()..color = Colors.red.withAlpha(150), position: Vector2(size.x - 100, size.y - 100));
+    fireButton = CircleComponent(radius: 40, paint: Paint()..color = Colors.red.withAlpha(150));
 
     ammoText = TextComponent(
       text: '',
       textRenderer: TextPaint(style: TextStyle(color: networkService.selectedMap == 2 ? Colors.black : Colors.white, fontSize: 22, fontWeight: FontWeight.bold, shadows: const [Shadow(blurRadius: 3.0, color: Colors.black, offset: Offset(1.0, 1.0))])),
-      position: Vector2(size.x - 180, size.y - 150),
     );
 
     timerText = TextComponent(
@@ -311,7 +320,6 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     if (playerTank.ammo == 0) return; 
     if (playerTank.ammo > 0) playerTank.ammo--;
 
-    // YENİ: Varsa özel mermiyi yükle, sonra sıfırla
     int shotType = playerTank.nextShotType;
     playerTank.nextShotType = 0;
 
@@ -326,7 +334,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       angle: angle, 
       ownerId: ownerId, 
       isEnemy: isEnemy,
-      bulletType: type, // Mermi tipi atandı
+      bulletType: type, 
       isArena: networkService.selectedMap == 3 
     ));
   }
@@ -338,11 +346,11 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     continueRect = Rect.fromLTWH(size.x / 2 - 180, size.y / 2 + 100, 170, 50);
     exitRect = Rect.fromLTWH(size.x / 2 + 10, size.y / 2 + 100, 170, 50);
     
-    fireButton.position = Vector2(size.x - 100, size.y - 100);
-    ammoText.position = Vector2(size.x - 180, size.y - 160);
+    // Ateş butonu ve mermi yazısı pozisyonu GameSettings'den (Ayarlar ekranı) okunur
+    fireButton.position = Vector2(size.x - GameSettings.fireRight - 80, size.y - GameSettings.fireBottom - 80);
+    ammoText.position = Vector2(fireButton.position.x - 80, fireButton.position.y - 40);
+    
     timerText.position = Vector2(size.x / 2 - 40, 20);
-
-    ammoText.text = networkService.selectedMap == 1 ? "Mermi: ${playerTank.ammo}" : "Mermi: Sınırsız";
 
     if (!isGameOver) {
       if (networkService.selectedMap == 3) {
@@ -391,7 +399,6 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       }
     }
 
-    // YENİ: TÜM HARİTALARDA LOOT DAĞILIMI
     if (!isGameOver && networkService.isHost) {
       _lootTimer += dt;
       if (_lootTimer > 7.0) {
@@ -405,13 +412,18 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
         
         int type;
         if (networkService.selectedMap == 3) {
-          // Arena: Kalkan(2), Roket(3), Lazer(4)
           type = 2 + rand.nextInt(3); 
         } else if (networkService.selectedMap == 1) {
-          // Çöl: Can(0), Mermi(1), Kalkan(2)
-          type = rand.nextInt(3);
+          // Yüzdelik (Ağırlıklı) Şans Sistemi
+          int chance = rand.nextInt(100); // 0 ile 99 arası sayı üretir
+          if (chance < 60) {
+            type = 1; // %60 İhtimalle Mermi Çıkar
+          } else if (chance < 80) {
+            type = 0; // %20 İhtimalle Can Çıkar
+          } else {
+            type = 2; // %20 İhtimalle Kalkan Çıkar
+          }
         } else {
-          // Diğerleri: Can(0), Kalkan(2)
           type = rand.nextBool() ? 0 : 2; 
         }
         

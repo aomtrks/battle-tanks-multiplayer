@@ -61,7 +61,7 @@ class EnemyTank extends PositionComponent with CollisionCallbacks, HasGameRef<Ta
   void respawn(double newX, double newY, double newAngle) {
     health = maxHealth;
     isDead = false;
-    isShielded = true; // YENİ: Düşman respawn olduğunda da kalkanlı olduğunu biliyoruz
+    isShielded = true; //Düşman respawn olduğunda da kalkanlı olduğunu biliyoruz
     position = Vector2(newX, newY);
     targetPosition = position.clone();
     angle = newAngle;

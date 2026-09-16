@@ -1,6 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
+// Kontrol pozisyonlarını global olarak hafızada tutan sınıf
+class GameSettings {
+  static double joyLeft = 40;
+  static double joyBottom = 40;
+  static double fireRight = 100;
+  static double fireBottom = 100;
+}
+
 class NetworkService {
   RawDatagramSocket? _socket;
   final int port = 4444;
@@ -16,14 +24,14 @@ class NetworkService {
 
   List<Map<String, dynamic>> lobbyPlayers = [];
   final Map<String, _ClientInfo> _clients = {};
+  
+  // 8 farklı uzak doğma noktasını karıştırarak dağıtan havuz
+  List<int> spawnPool = [0, 1, 2, 3, 4, 5, 6, 7];
 
   Function(List<Map<String, dynamic>> players)? onLobbyUpdated;
   Function()? onGameStarted;
   Function(String playerId, double x, double y, double angle)? onPlayerMove;
-  
-  // YENİ: Mermi tipi eklendi (0: Normal, 3: Roket, 4: Lazer)
   Function(String playerId, double x, double y, double angle, int type)? onPlayerShoot;
-  
   Function(String playerId, int health)? onHealthUpdate;
   Function(String playerId, double x, double y, double angle)? onPlayerRespawn;
   Function(String id, int type, double x, double y)? onLootSpawned;
@@ -37,7 +45,11 @@ class NetworkService {
     _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port, reuseAddress: true, reusePort: true);
     _socket!.readEventsEnabled = true;
     _listen();
-    lobbyPlayers = [{'id': myId, 'name': myName, 'spawnIndex': 0, 'score': 0}];
+    
+    // Kurucu odayı açtığında lokasyonları karıştırır ve kendine ilk rastgele yeri alır
+    spawnPool.shuffle();
+    lobbyPlayers = [{'id': myId, 'name': myName, 'spawnIndex': spawnPool[0], 'score': 0}];
+    
     final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
     for (var interface in interfaces) {
       for (var addr in interface.addresses) {
@@ -99,7 +111,9 @@ class NetworkService {
             String clientKey = '${datagram.address.address}:${datagram.port}';
             if (data['action'] == 'join_lobby') {
               if (!_clients.containsKey(clientKey)) _clients[clientKey] = _ClientInfo(datagram.address, datagram.port);
-              int newSpawnIndex = lobbyPlayers.length % 4;
+              
+              // Oyuncuya karıştırılmış havuzdan rastgele ama daha önce alınmamış uzak bir nokta ver
+              int newSpawnIndex = spawnPool[lobbyPlayers.length % 8];
               lobbyPlayers.add({'id': senderId, 'name': data['name'], 'spawnIndex': newSpawnIndex, 'score': 0});
               _broadcastLobby();
             }
@@ -126,7 +140,6 @@ class NetworkService {
           } else if (data['action'] == 'move' && onPlayerMove != null) {
             onPlayerMove!(senderId, (data['x'] as num).toDouble(), (data['y'] as num).toDouble(), (data['a'] as num).toDouble());
           } else if (data['action'] == 'shoot' && onPlayerShoot != null) {
-            // YENİ: Mermi tipi ağdan okunur
             onPlayerShoot!(senderId, (data['x'] as num).toDouble(), (data['y'] as num).toDouble(), (data['a'] as num).toDouble(), data['t'] ?? 0);
           } else if (data['action'] == 'health' && onHealthUpdate != null) {
             onHealthUpdate!(senderId, data['h']);
@@ -176,10 +189,7 @@ class NetworkService {
   }
 
   void sendPosition(double x, double y, double angle) => _routeMessage({'action': 'move', 'id': myId, 'x': x, 'y': y, 'a': angle});
-  
-  // YENİ: Mermi tipini ağa gönder
   void sendShoot(double x, double y, double angle, int type) => _routeMessage({'action': 'shoot', 'id': myId, 'x': x, 'y': y, 'a': angle, 't': type});
-  
   void sendHealth(int health) => _routeMessage({'action': 'health', 'id': myId, 'h': health});
   void sendRespawn(double x, double y, double angle) => _routeMessage({'action': 'respawn', 'id': myId, 'x': x, 'y': y, 'a': angle, 'h': 5});
   void sendDied(String killerId) {

@@ -27,6 +27,7 @@ class _MainMenuState extends State<MainMenu> {
   final TextEditingController _ipController = TextEditingController();
   
   bool _inLobby = false;
+  bool _inSettings = false; // YENİ: Ayarlar ekranı kontrolcüsü
   String _hostIp = '';
   List<Map<String, dynamic>> _players = [];
 
@@ -109,6 +110,8 @@ class _MainMenuState extends State<MainMenu> {
 
   @override
   Widget build(BuildContext context) {
+    if (_inSettings) return Scaffold(body: _buildSettingsScreen()); // AYARLAR EKRANI
+    
     return Scaffold(
       backgroundColor: Colors.blueGrey.shade900,
       body: Center(
@@ -124,11 +127,82 @@ class _MainMenuState extends State<MainMenu> {
     );
   }
 
+  // TAM EKRAN KONTROL AYARLARI EKRANI
+  Widget _buildSettingsScreen() {
+    return Stack(
+      children: [
+        Container(color: Colors.grey.shade800), // Arka plan
+        Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: ElevatedButton.icon(
+              onPressed: () => setState(() => _inSettings = false),
+              icon: const Icon(Icons.save),
+              label: const Text("Kaydet ve Geri Dön", style: TextStyle(fontSize: 18)),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, minimumSize: const Size(200, 50)),
+            ),
+          ),
+        ),
+        // Sürüklenebilir Joystick Temsili
+        Positioned(
+          left: GameSettings.joyLeft,
+          bottom: GameSettings.joyBottom,
+          child: GestureDetector(
+            onPanUpdate: (details) {
+              setState(() {
+                GameSettings.joyLeft += details.delta.dx;
+                GameSettings.joyBottom -= details.delta.dy;
+                if (GameSettings.joyLeft < 0) GameSettings.joyLeft = 0;
+                if (GameSettings.joyBottom < 0) GameSettings.joyBottom = 0;
+              });
+            },
+            child: Container(
+              width: 100, height: 100,
+              decoration: BoxDecoration(color: Colors.blue.withAlpha(100), shape: BoxShape.circle),
+              child: Center(child: Container(width: 40, height: 40, decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle))),
+            ),
+          ),
+        ),
+        // Sürüklenebilir Ateş Butonu Temsili
+        Positioned(
+          right: GameSettings.fireRight,
+          bottom: GameSettings.fireBottom,
+          child: GestureDetector(
+            onPanUpdate: (details) {
+              setState(() {
+                GameSettings.fireRight -= details.delta.dx;
+                GameSettings.fireBottom -= details.delta.dy;
+                if (GameSettings.fireRight < 0) GameSettings.fireRight = 0;
+                if (GameSettings.fireBottom < 0) GameSettings.fireBottom = 0;
+              });
+            },
+            child: Container(
+              width: 80, height: 80,
+              decoration: BoxDecoration(color: Colors.red.withAlpha(150), shape: BoxShape.circle),
+              child: const Center(child: Icon(Icons.local_fire_department, color: Colors.white, size: 40)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildJoinScreen() {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text("BATTLE TANKS", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("BATTLE TANKS", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            IconButton(
+              icon: const Icon(Icons.settings, color: Colors.blueGrey, size: 30),
+              onPressed: () => setState(() => _inSettings = true),
+              tooltip: "Kontrolleri Ayarla",
+            )
+          ],
+        ),
         const SizedBox(height: 15),
         TextField(controller: _nameController, decoration: const InputDecoration(labelText: "Adın", border: OutlineInputBorder())),
         const SizedBox(height: 15),
@@ -160,7 +234,17 @@ class _MainMenuState extends State<MainMenu> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text("BEKLEME LOBİSİ", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text("BEKLEME LOBİSİ", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
+            IconButton(
+              icon: const Icon(Icons.settings, color: Colors.blueGrey, size: 30),
+              onPressed: () => setState(() => _inSettings = true),
+              tooltip: "Kontrolleri Ayarla",
+            )
+          ],
+        ),
         
         if (_networkService.isHost) ...[
           Padding(
@@ -176,11 +260,11 @@ class _MainMenuState extends State<MainMenu> {
                   DropdownMenuItem(value: 0, child: Text("Klasik Harita")),
                   DropdownMenuItem(value: 1, child: Text("Çöl Haritası")),
                   DropdownMenuItem(value: 2, child: Text("Buzul Haritası")),
-                  DropdownMenuItem(value: 3, child: Text("Arena Haritası")), // YENİ MOD
+                  DropdownMenuItem(value: 3, child: Text("Arena Haritası")), 
                 ],
                 onChanged: (val) {
                   int newMap = val ?? 0;
-                  int newTime = newMap == 3 ? 3 : 60; // Arena moduna geçilirse default 3 el olsun
+                  int newTime = newMap == 3 ? 3 : 60; 
                   _networkService.updateLobbySettings(newMap, newTime);
                   setState((){});
                 }
@@ -192,14 +276,11 @@ class _MainMenuState extends State<MainMenu> {
                   DropdownMenuItem(value: 3, child: Text("3 El")),
                   DropdownMenuItem(value: 5, child: Text("5 El")),
                   DropdownMenuItem(value: 10, child: Text("10 El")),
-                  DropdownMenuItem(value: 15, child: Text("15 El")),
-                  DropdownMenuItem(value: 30, child: Text("30 El")),
                 ]
                 : const [
                   DropdownMenuItem(value: 60, child: Text("1 Dakika")),
                   DropdownMenuItem(value: 120, child: Text("2 Dakika")),
                   DropdownMenuItem(value: 300, child: Text("5 Dakika")),
-                  DropdownMenuItem(value: 600, child: Text("10 Dakika")),
                 ],
                 onChanged: (val) {
                   _networkService.updateLobbySettings(_networkService.selectedMap, val ?? 60);
