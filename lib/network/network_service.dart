@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-// Kontrol pozisyonlarını global olarak hafızada tutan sınıf
 class GameSettings {
   static double joyLeft = 40;
   static double joyBottom = 40;
@@ -21,12 +20,15 @@ class NetworkService {
   final String myId = DateTime.now().millisecondsSinceEpoch.toString();
   String myName = "Oyuncu";
   int mySpawnIndex = 0;
+  int myTeam = 0; // YENİ: Takımım
 
   List<Map<String, dynamic>> lobbyPlayers = [];
   final Map<String, _ClientInfo> _clients = {};
-  
-  // 8 farklı uzak doğma noktasını karıştırarak dağıtan havuz
   List<int> spawnPool = [0, 1, 2, 3, 4, 5, 6, 7];
+  
+  // YENİ: Takım Skorları
+  int teamScoreA = 0;
+  int teamScoreB = 0;
 
   Function(List<Map<String, dynamic>> players)? onLobbyUpdated;
   Function()? onGameStarted;
@@ -38,6 +40,11 @@ class NetworkService {
   Function(String id)? onLootCollected;
   Function(String playerId, bool state)? onShieldUpdate;
   Function(int seed, int rows, int cols, int currentRound)? onNewRound; 
+  
+  // YENİ: Futbol Topu Dinleyicileri
+  Function(String ownerId)? onCatchBall;
+  Function(String ownerId, double x, double y, double angle)? onShootBall;
+  Function(int scoringTeam)? onGoalScored;
 
   Future<String> startHosting(String name) async {
     isHost = true;
@@ -46,9 +53,8 @@ class NetworkService {
     _socket!.readEventsEnabled = true;
     _listen();
     
-    // Kurucu odayı açtığında lokasyonları karıştırır ve kendine ilk rastgele yeri alır
     spawnPool.shuffle();
-    lobbyPlayers = [{'id': myId, 'name': myName, 'spawnIndex': spawnPool[0], 'score': 0}];
+    lobbyPlayers = [{'id': myId, 'name': myName, 'spawnIndex': spawnPool[0], 'score': 0, 'team': 0}];
     
     final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
     for (var interface in interfaces) {
@@ -76,9 +82,19 @@ class NetworkService {
     _broadcastLobby();
   }
 
+  // YENİ: Host takımları düzenler
+  void toggleTeam(String playerId) {
+    if (!isHost) return;
+    for (var p in lobbyPlayers) {
+      if (p['id'] == playerId) p['team'] = (p['team'] == 0) ? 1 : 0;
+    }
+    _broadcastLobby();
+  }
+
   void startGame() {
     if (isHost) {
       for (var p in lobbyPlayers) p['score'] = 0; 
+      teamScoreA = 0; teamScoreB = 0;
       _broadcastLobby();
       for (int i = 0; i < 3; i++) {
         _broadcast(utf8.encode(jsonEncode({'action': 'start_game'})));
@@ -111,14 +127,20 @@ class NetworkService {
             String clientKey = '${datagram.address.address}:${datagram.port}';
             if (data['action'] == 'join_lobby') {
               if (!_clients.containsKey(clientKey)) _clients[clientKey] = _ClientInfo(datagram.address, datagram.port);
-              
-              // Oyuncuya karıştırılmış havuzdan rastgele ama daha önce alınmamış uzak bir nokta ver
               int newSpawnIndex = spawnPool[lobbyPlayers.length % 8];
-              lobbyPlayers.add({'id': senderId, 'name': data['name'], 'spawnIndex': newSpawnIndex, 'score': 0});
+              int autoTeam = lobbyPlayers.length % 2 == 0 ? 0 : 1; // Otomatik takım dağıtımı
+              lobbyPlayers.add({'id': senderId, 'name': data['name'], 'spawnIndex': newSpawnIndex, 'score': 0, 'team': autoTeam});
               _broadcastLobby();
             }
 
             if (data['action'] == 'died') _processKill(data['killerId']);
+            
+            // Futbol Host Otoritesi
+            if (data['action'] == 'goal') {
+               teamScoreA = data['scoreA'];
+               teamScoreB = data['scoreB'];
+            }
+
             if (data['action'] != 'join_lobby') _broadcast(datagram.data, excludeKey: clientKey);
           }
 
@@ -126,9 +148,14 @@ class NetworkService {
             lobbyPlayers = List<Map<String, dynamic>>.from(data['players']);
             selectedMap = data['map'] ?? 0;
             selectedTime = data['time'] ?? 60;
+            teamScoreA = data['scoreA'] ?? 0;
+            teamScoreB = data['scoreB'] ?? 0;
             
             for (var p in lobbyPlayers) {
-              if (p['id'] == myId) mySpawnIndex = p['spawnIndex'];
+              if (p['id'] == myId) {
+                mySpawnIndex = p['spawnIndex'];
+                myTeam = p['team'] ?? 0;
+              }
             }
             if (onLobbyUpdated != null) {
               try { onLobbyUpdated!(lobbyPlayers); } catch (_) {}
@@ -151,6 +178,12 @@ class NetworkService {
             onLootCollected!(data['lootId']);
           } else if (data['action'] == 'shield' && onShieldUpdate != null) {
             onShieldUpdate!(senderId, data['state']); 
+          } else if (data['action'] == 'catch_ball' && onCatchBall != null) { // YENİ
+            onCatchBall!(senderId);
+          } else if (data['action'] == 'shoot_ball' && onShootBall != null) { // YENİ
+            onShootBall!(senderId, (data['x'] as num).toDouble(), (data['y'] as num).toDouble(), (data['a'] as num).toDouble());
+          } else if (data['action'] == 'goal' && onGoalScored != null) { // YENİ
+            onGoalScored!(data['team']);
           }
         } catch (e) {
           print("UDP Hata: $e");
@@ -161,7 +194,7 @@ class NetworkService {
 
   void _processKill(String killerId) {
     if (!isHost) return;
-    if (selectedMap == 3) return; 
+    if (selectedMap == 3 || selectedMap == 4) return; // Arena ve Futbolda skor ayrı hesaplanır
     for (var p in lobbyPlayers) {
       if (p['id'] == killerId) p['score'] = (p['score'] ?? 0) + 1;
     }
@@ -181,7 +214,9 @@ class NetworkService {
       'action': 'lobby_update', 
       'players': lobbyPlayers, 
       'map': selectedMap,
-      'time': selectedTime
+      'time': selectedTime,
+      'scoreA': teamScoreA,
+      'scoreB': teamScoreB
     })));
     if (onLobbyUpdated != null) {
       try { onLobbyUpdated!(lobbyPlayers); } catch (_) {}
@@ -199,9 +234,16 @@ class NetworkService {
   void sendSpawnLoot(String lootId, int type, double x, double y) => _routeMessage({'action': 'spawn_loot', 'id': myId, 'lootId': lootId, 'type': type, 'x': x, 'y': y});
   void sendCollectLoot(String lootId) => _routeMessage({'action': 'collect_loot', 'id': myId, 'lootId': lootId});
   void sendShield(bool state) => _routeMessage({'action': 'shield', 'id': myId, 'state': state}); 
+  void sendNewRound(int seed, int rows, int cols, int currentRound) => _routeMessage({'action': 'new_round', 'id': myId, 'seed': seed, 'rows': rows, 'cols': cols, 'round': currentRound});
   
-  void sendNewRound(int seed, int rows, int cols, int currentRound) {
-    _routeMessage({'action': 'new_round', 'id': myId, 'seed': seed, 'rows': rows, 'cols': cols, 'round': currentRound});
+  // YENİ: Top Aksiyonları
+  void sendCatchBall() => _routeMessage({'action': 'catch_ball', 'id': myId});
+  void sendShootBall(double x, double y, double angle) => _routeMessage({'action': 'shoot_ball', 'id': myId, 'x': x, 'y': y, 'a': angle});
+  void sendGoal(int team) {
+    if (isHost) {
+      if (team == 0) teamScoreA++; else teamScoreB++;
+      _routeMessage({'action': 'goal', 'team': team, 'scoreA': teamScoreA, 'scoreB': teamScoreB});
+    }
   }
 
   void _routeMessage(Map<String, dynamic> msg) {

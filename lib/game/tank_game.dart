@@ -9,9 +9,9 @@ import '../components/enemy_tank.dart';
 import '../components/wall.dart';
 import '../components/bullet.dart';
 import '../components/loot_box.dart';
+import '../components/football.dart';
 import '../network/network_service.dart';
 
-// Klasik Süreli Mod İçin Yeniden Doğma Bekleme Ekranı
 class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   bool isVisible = false;
   final Paint bgPaint = Paint()..color = Colors.black87;
@@ -31,26 +31,37 @@ class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   }
 }
 
-// ARENA MODU MİNİMALİST SOL ÜST SKOR TABLOSU
 class LiveTopScoreHUD extends PositionComponent with HasGameRef<TankGame> {
   final TextPaint textPaint = TextPaint(style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold));
+  
+  // YENİ: Futbol modu için siyah yazı ve beyaz gölgeli özel stil (Arka plansız)
+  final TextPaint footballTextPaint = TextPaint(style: const TextStyle(
+    color: Colors.black, 
+    fontSize: 22, 
+    fontWeight: FontWeight.bold,
+    shadows: [Shadow(blurRadius: 2.0, color: Colors.white, offset: Offset(1.0, 1.0))]
+  ));
+  
+  final Paint bgPaint = Paint()..color = Colors.black.withOpacity(0.5);
 
   @override
   void render(Canvas canvas) {
-    if (gameRef.networkService.selectedMap != 3) return;
-    
-    double yPos = 20;
-    textPaint.render(canvas, "El: ${gameRef.currentRound}/${gameRef.networkService.selectedTime}", Vector2(20, yPos));
-    yPos += 25;
-    
-    for (var p in gameRef.networkService.lobbyPlayers) {
-      textPaint.render(canvas, "${p['name']}: ${p['score']}", Vector2(20, yPos));
-      yPos += 22;
+    if (gameRef.networkService.selectedMap == 3) {
+      double yPos = 20;
+      textPaint.render(canvas, "El: ${gameRef.currentRound}/${gameRef.networkService.selectedTime}", Vector2(20, yPos));
+      yPos += 25;
+      for (var p in gameRef.networkService.lobbyPlayers) {
+        textPaint.render(canvas, "${p['name']}: ${p['score']}", Vector2(20, yPos));
+        yPos += 22;
+      }
+    } else if (gameRef.networkService.selectedMap == 4) {
+      double cx = gameRef.size.x / 2;
+      // Arka plan kutusu tamamen kaldırıldı, sadece temiz metin çiziliyor.
+      footballTextPaint.render(canvas, "Mavi Takım  ${gameRef.networkService.teamScoreA} - ${gameRef.networkService.teamScoreB}  Kırmızı Takım   |", Vector2(cx - 240, 15));
     }
   }
 }
 
-// OYUN SONU TABLOSU
 class EndGameHUD extends PositionComponent with HasGameRef<TankGame> {
   final Paint bgPaint = Paint()..color = Colors.black87;
   final TextPaint titlePaint = TextPaint(style: const TextStyle(color: Colors.amber, fontSize: 36, fontWeight: FontWeight.bold));
@@ -65,27 +76,31 @@ class EndGameHUD extends PositionComponent with HasGameRef<TankGame> {
     canvas.drawRect(Rect.fromLTWH(0, 0, gameRef.size.x, gameRef.size.y), bgPaint);
     
     String title = gameRef.networkService.selectedMap == 3 ? "OYUN BİTTİ - LİDERLİK TABLOSU" : "SÜRE BİTTİ - LİDERLİK TABLOSU";
+    if (gameRef.networkService.selectedMap == 4) title = "MAÇ BİTTİ - SKOR TABLOSU";
+
     titlePaint.render(canvas, title, Vector2(cx - 280, 40));
 
-    List<Map<String, dynamic>> sortedPlayers = List.from(gameRef.networkService.lobbyPlayers);
-    sortedPlayers.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
-
     double yPos = 120;
-    for (int i = 0; i < sortedPlayers.length; i++) {
-      var p = sortedPlayers[i];
-      scorePaint.render(canvas, "${i + 1}. ${p['name']} - ${p['score']} Puan", Vector2(cx - 150, yPos));
-      yPos += 45;
+    if (gameRef.networkService.selectedMap == 4) {
+      scorePaint.render(canvas, "Takım A: ${gameRef.networkService.teamScoreA} Gol", Vector2(cx - 100, yPos));
+      scorePaint.render(canvas, "Takım B: ${gameRef.networkService.teamScoreB} Gol", Vector2(cx - 100, yPos + 40));
+    } else {
+      List<Map<String, dynamic>> sortedPlayers = List.from(gameRef.networkService.lobbyPlayers);
+      sortedPlayers.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+      for (int i = 0; i < sortedPlayers.length; i++) {
+        var p = sortedPlayers[i];
+        scorePaint.render(canvas, "${i + 1}. ${p['name']} - ${p['score']} Puan", Vector2(cx - 150, yPos));
+        yPos += 45;
+      }
     }
 
     canvas.drawRRect(RRect.fromRectAndRadius(gameRef.continueRect, const Radius.circular(8)), btnContinuePaint);
     btnTextPaint.render(canvas, "Devam Et (Lobi)", Vector2(gameRef.continueRect.left + 20, gameRef.continueRect.top + 15));
-
     canvas.drawRRect(RRect.fromRectAndRadius(gameRef.exitRect, const Radius.circular(8)), btnLeavePaint);
     btnTextPaint.render(canvas, "Odadan Çık", Vector2(gameRef.exitRect.left + 35, gameRef.exitRect.top + 15));
   }
 }
 
-// LABİRENT ALGORİTMASI HÜCRESİ
 class MazeCell {
   int x, y;
   bool top = true, right = true, bottom = true, left = true, visited = false;
@@ -107,6 +122,8 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   final LiveTopScoreHUD _liveTopHUD = LiveTopScoreHUD();
   late EndGameHUD _endGameHUD;
   
+  Football? ball; 
+
   final Map<String, EnemyTank> enemies = {};
   final Map<String, LootBox> loots = {};
   final List<Wall> currentWalls = []; 
@@ -116,8 +133,6 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   int currentRound = 1;
   bool isGameOver = false;
   bool _roundEndingTriggered = false; 
-  
-  // Ağ Senkronizasyonu Koruma Süresi (Başlangıç Hatalarını Engeller)
   double _gracePeriod = 2.5;
 
   late Rect continueRect;
@@ -131,22 +146,23 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     if (networkService.selectedMap == 1) return const Color(0xFFD2B48C);
     if (networkService.selectedMap == 2) return const Color(0xFFE0F7FA);
     if (networkService.selectedMap == 3) return const Color(0xFFEEEEEE); 
+    if (networkService.selectedMap == 4) return const Color(0xFF1976D2); // YENİ: Mavi Futbol Sahası
     return Colors.blueGrey.shade900;
   }
 
-  // 8 Farklı UZAK Nokta Havuzu Ataması
   Vector2 getSpawnPoint(int index, {int? seed}) {
+    if (networkService.selectedMap == 4) {
+      Random rng = Random();
+      // YENİ: Genişletilmiş saha koordinatlarına göre (1400 genişlik)
+      if (networkService.myTeam == 0) return Vector2(150, 300 + rng.nextDouble() * 200); 
+      return Vector2(1250, 300 + rng.nextDouble() * 200); 
+    }
+
     if (networkService.selectedMap == 3) {
       int r = 5, c = 7;
-      if (seed != null) {
-        Random rng = Random(seed);
-        r = 5 + rng.nextInt(3);
-        c = 7 + rng.nextInt(4);
-      }
-      double cellW = 1000.0 / c;
-      double cellH = 750.0 / r;
+      if (seed != null) { Random rng = Random(seed); r = 5 + rng.nextInt(3); c = 7 + rng.nextInt(4); }
+      double cellW = 1000.0 / c; double cellH = 750.0 / r;
       int targetRow = 0, targetCol = 0;
-      
       switch (index % 8) { 
         case 0: targetRow = 0; targetCol = 0; break; 
         case 1: targetRow = r - 1; targetCol = c - 1; break; 
@@ -161,20 +177,21 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     }
     
     switch (index % 8) { 
-      case 0: return Vector2(100, 100);
-      case 1: return Vector2(1400, 900);
-      case 2: return Vector2(1400, 100);
-      case 3: return Vector2(100, 900);
-      case 4: return Vector2(750, 100);
-      case 5: return Vector2(750, 900);
-      case 6: return Vector2(100, 500);
-      case 7: return Vector2(1400, 500);
-      default: return Vector2(750, 500);
+      case 0: return Vector2(100, 100); case 1: return Vector2(1400, 900); case 2: return Vector2(1400, 100); case 3: return Vector2(100, 900); case 4: return Vector2(750, 100); case 5: return Vector2(750, 900); case 6: return Vector2(100, 500); case 7: return Vector2(1400, 500); default: return Vector2(750, 500);
     }
   }
 
   void showScoreboard() => _scoreboardHUD.isVisible = true;
   void hideScoreboard() => _scoreboardHUD.isVisible = false;
+
+  void handleGoal(int team) {
+    if (ball != null) {
+      ball!.ownerId = null;
+      ball!.velocity = Vector2.zero();
+      // YENİ: Top Genişletilmiş Sahanın Tam Merkezine (700x400) Döner
+      ball!.position = Vector2(700, 400); 
+    }
+  }
 
   @override
   Future<void> onLoad() async {
@@ -182,16 +199,16 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
     remainingTime = networkService.selectedTime.toDouble();
     _endGameHUD = EndGameHUD();
-    _gracePeriod = 2.5; // İlk yüklendiğinde koruma başlasın
+    _gracePeriod = 2.5; 
 
     networkService.onPlayerMove = (playerId, x, y, angle) {
       if (!enemies.containsKey(playerId)) {
-        int enemySpawnIndex = 0;
+        int enemySpawnIndex = 0, enemyTeam = 0;
         String enemyName = "Bilinmeyen";
         for (var p in networkService.lobbyPlayers) {
-          if (p['id'] == playerId) { enemySpawnIndex = p['spawnIndex']; enemyName = p['name']; }
+          if (p['id'] == playerId) { enemySpawnIndex = p['spawnIndex']; enemyName = p['name']; enemyTeam = p['team']; }
         }
-        final newEnemy = EnemyTank(playerName: enemyName, position: getSpawnPoint(enemySpawnIndex, seed: currentArenaSeed));
+        final newEnemy = EnemyTank(playerName: enemyName, position: getSpawnPoint(enemySpawnIndex, seed: currentArenaSeed), team: enemyTeam);
         enemies[playerId] = newEnemy;
         world.add(newEnemy);
       }
@@ -205,6 +222,10 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     networkService.onHealthUpdate = (playerId, newHealth) => enemies[playerId]?.updateHealth(newHealth);
     networkService.onPlayerRespawn = (playerId, x, y, angle) => enemies[playerId]?.respawn(x, y, angle);
     networkService.onShieldUpdate = (playerId, state) => enemies[playerId]?.setShield(state); 
+    
+    networkService.onCatchBall = (id) => ball?.catchBall(id);
+    networkService.onShootBall = (id, x, y, a) { ball?.position = Vector2(x, y); ball?.shootBall(a); };
+    networkService.onGoalScored = (team) => handleGoal(team);
 
     networkService.onLootSpawned = (id, type, x, y) {
       final loot = LootBox(id: id, type: type, position: Vector2(x, y));
@@ -212,42 +233,27 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       world.add(loot);
     };
     networkService.onLootCollected = (id) {
-      if (loots.containsKey(id)) {
-        loots[id]?.removeFromParent();
-        loots.remove(id);
-      }
+      if (loots.containsKey(id)) { loots[id]?.removeFromParent(); loots.remove(id); }
     };
 
     networkService.onNewRound = (seed, rows, cols, round) {
-      currentArenaSeed = seed;
-      currentRound = round;
-      _roundEndingTriggered = false;
-      _gracePeriod = 2.5; // Her yeni elde 2.5 sn koruma kalkanı ve bekleme sıfırlanır
-      
-      for (var w in currentWalls) w.removeFromParent();
-      currentWalls.clear();
-      for (var l in loots.values) l.removeFromParent();
-      loots.clear();
+      currentArenaSeed = seed; currentRound = round; _roundEndingTriggered = false; _gracePeriod = 2.5; 
+      for (var w in currentWalls) w.removeFromParent(); currentWalls.clear();
+      for (var l in loots.values) l.removeFromParent(); loots.clear();
       children.whereType<Bullet>().forEach((b) => b.removeFromParent());
       world.children.whereType<Bullet>().forEach((b) => b.removeFromParent());
 
       _buildArenaMaze(seed, rows, cols);
 
-      playerTank.health = 1;
-      playerTank.isDead = false;
-      playerTank.isShielded = true; 
-      playerTank.shieldTimer = 5.0;
-      playerTank.nextShotType = 0; 
+      playerTank.health = 1; playerTank.isDead = false; playerTank.isShielded = true; 
+      playerTank.shieldTimer = 5.0; playerTank.nextShotType = 0; 
       playerTank.position = getSpawnPoint(networkService.mySpawnIndex, seed: seed);
       playerTank.angle = 0;
       networkService.sendRespawn(playerTank.position.x, playerTank.position.y, 0);
 
       enemies.forEach((k, v) {
-        v.health = 1;
-        v.isDead = false;
-        v.isShielded = true;
-        int eIdx = 0;
-        for(var p in networkService.lobbyPlayers) if(p['id'] == k) eIdx = p['spawnIndex'];
+        v.health = 1; v.isDead = false; v.isShielded = true;
+        int eIdx = 0; for(var p in networkService.lobbyPlayers) if(p['id'] == k) eIdx = p['spawnIndex'];
         v.position = getSpawnPoint(eIdx, seed: seed);
       });
     };
@@ -262,44 +268,43 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     );
 
     fireButton = CircleComponent(radius: 40, paint: Paint()..color = Colors.red.withAlpha(150));
-
-    ammoText = TextComponent(
-      text: '',
-      textRenderer: TextPaint(style: TextStyle(color: networkService.selectedMap == 2 ? Colors.black : Colors.white, fontSize: 22, fontWeight: FontWeight.bold, shadows: const [Shadow(blurRadius: 3.0, color: Colors.black, offset: Offset(1.0, 1.0))])),
-    );
+    ammoText = TextComponent(text: '', textRenderer: TextPaint(style: TextStyle(color: networkService.selectedMap == 2 ? Colors.black : Colors.white, fontSize: 22, fontWeight: FontWeight.bold, shadows: const [Shadow(blurRadius: 3.0, color: Colors.black, offset: Offset(1.0, 1.0))])));
+    
+    // YENİ: Süre yazısının rengi Futbol haritasında (Map 4) da siyah olacak.
+    Color timerColor = (networkService.selectedMap == 2 || networkService.selectedMap == 4) ? Colors.black : Colors.white;
+    Color shadowColor = (networkService.selectedMap == 2 || networkService.selectedMap == 4) ? Colors.white : Colors.black;
 
     timerText = TextComponent(
-      text: '',
-      textRenderer: TextPaint(style: TextStyle(color: networkService.selectedMap == 2 ? Colors.black : Colors.white, fontSize: 32, fontWeight: FontWeight.bold, shadows: const [Shadow(blurRadius: 3.0, color: Colors.black, offset: Offset(1.0, 1.0))])),
-      position: Vector2(size.x / 2 - 40, 20),
+      text: '', 
+      textRenderer: TextPaint(style: TextStyle(color: timerColor, fontSize: 30, fontWeight: FontWeight.bold, shadows: [Shadow(blurRadius: 2.0, color: shadowColor, offset: const Offset(1.0, 1.0))])), 
+      position: Vector2(size.x / 2 - 40, 20)
     );
 
     if (networkService.selectedMap == 3) {
       if (networkService.isHost) {
         currentArenaSeed = DateTime.now().millisecondsSinceEpoch;
         Random rng = Random(currentArenaSeed!);
-        int rows = 5 + rng.nextInt(3); 
-        int cols = 7 + rng.nextInt(4);
+        int rows = 5 + rng.nextInt(3); int cols = 7 + rng.nextInt(4);
         networkService.sendNewRound(currentArenaSeed!, rows, cols, 1);
         _buildArenaMaze(currentArenaSeed!, rows, cols); 
       }
+    } else if (networkService.selectedMap == 4) {
+      _createFootballField(); 
     } else {
       _createBorders(); 
     }
 
-    playerTank = Tank(
-      playerName: networkService.myName,
-      spawnPosition: getSpawnPoint(networkService.mySpawnIndex, seed: currentArenaSeed),
-      joystick: joystick,
-      networkService: networkService,
-    );
-
+    playerTank = Tank(playerName: networkService.myName, spawnPosition: getSpawnPoint(networkService.mySpawnIndex, seed: currentArenaSeed), joystick: joystick, networkService: networkService);
     world.add(playerTank);
     
-    // ARENA MODU KAMERA ÖLÇEKLENDİRMESİ
     if (networkService.selectedMap == 3) {
       camera.viewfinder.visibleGameSize = Vector2(1000, 750);
       camera.viewfinder.position = Vector2(500, 375); 
+      camera.viewfinder.anchor = Anchor.center;
+    } else if (networkService.selectedMap == 4) {
+      // YENİ: Futbol Sahası Genişliği (1400x800) için Kamera Ayarı
+      camera.viewfinder.visibleGameSize = Vector2(1400, 800);
+      camera.viewfinder.position = Vector2(700, 400); 
       camera.viewfinder.anchor = Anchor.center;
     } else {
       camera.follow(playerTank);
@@ -307,8 +312,8 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     
     camera.viewport.add(joystick);
     camera.viewport.add(fireButton);
-    camera.viewport.add(ammoText);
-    if (networkService.selectedMap != 3) camera.viewport.add(timerText); 
+    if (networkService.selectedMap != 4) camera.viewport.add(ammoText); 
+    camera.viewport.add(timerText); 
     camera.viewport.add(_liveTopHUD);
     camera.viewport.add(_scoreboardHUD);
   }
@@ -326,26 +331,25 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
   void _shoot() {
     if (playerTank.isDead) return;
+    
+    if (ball?.ownerId == networkService.myId) {
+      ball!.shootBall(playerTank.angle);
+      networkService.sendShootBall(playerTank.position.x, playerTank.position.y, playerTank.angle);
+      return;
+    }
+    
     if (playerTank.ammo == 0) return; 
     if (playerTank.ammo > 0) playerTank.ammo--;
 
     int shotType = playerTank.nextShotType;
     playerTank.nextShotType = 0;
-
     _spawnBullet(playerTank.position.x, playerTank.position.y, playerTank.angle, ownerId: networkService.myId, isEnemy: false, type: shotType);
     networkService.sendShoot(playerTank.position.x, playerTank.position.y, playerTank.angle, shotType);
   }
 
   void _spawnBullet(double x, double y, double angle, {required String ownerId, required bool isEnemy, int type = 0}) {
     final offset = Vector2(sin(angle) * 25, -cos(angle) * 25);
-    world.add(Bullet(
-      position: Vector2(x, y) + offset, 
-      angle: angle, 
-      ownerId: ownerId, 
-      isEnemy: isEnemy,
-      bulletType: type, 
-      isArena: networkService.selectedMap == 3 
-    ));
+    world.add(Bullet(position: Vector2(x, y) + offset, angle: angle, ownerId: ownerId, isEnemy: isEnemy, bulletType: type, isArena: (networkService.selectedMap == 3 || networkService.selectedMap == 4)));
   }
 
   @override
@@ -357,42 +361,31 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     
     fireButton.position = Vector2(size.x - GameSettings.fireRight - 80, size.y - GameSettings.fireBottom - 80);
     ammoText.position = Vector2(fireButton.position.x - 80, fireButton.position.y - 40);
-    timerText.position = Vector2(size.x / 2 - 40, 20);
+    
     ammoText.text = networkService.selectedMap == 1 ? "Mermi: ${playerTank.ammo}" : "Mermi: Sınırsız";
 
     if (!isGameOver) {
       if (networkService.selectedMap == 3) {
-        
-        // Eğer gracePeriod (bekleme süresi) bitmediyse, el sonu kontrolü yapma
         if (_gracePeriod > 0) {
           _gracePeriod -= dt;
         } else if (networkService.isHost && !_roundEndingTriggered) {
-          int aliveCount = 0;
-          String? lastAliveId;
-          
+          int aliveCount = 0; String? lastAliveId;
           if (!playerTank.isDead) { aliveCount++; lastAliveId = networkService.myId; }
           enemies.forEach((k, v) { if (!v.isDead) { aliveCount++; lastAliveId = k; } });
 
           bool roundOver = false;
-          if (networkService.lobbyPlayers.length == 1) {
-            if (aliveCount == 0) roundOver = true;
-          } else {
-            if (aliveCount <= 1) roundOver = true;
-          }
+          if (networkService.lobbyPlayers.length == 1) { if (aliveCount == 0) roundOver = true; } 
+          else { if (aliveCount <= 1) roundOver = true; }
 
           if (roundOver) {
             _roundEndingTriggered = true;
             Future.delayed(const Duration(seconds: 2), () {
-              if (aliveCount == 1 && lastAliveId != null) {
-                networkService.addScoreToPlayer(lastAliveId!); 
-              }
-              if (currentRound >= networkService.selectedTime) {
-                _triggerGameOver(); 
-              } else {
+              if (aliveCount == 1 && lastAliveId != null) networkService.addScoreToPlayer(lastAliveId!); 
+              if (currentRound >= networkService.selectedTime) _triggerGameOver(); 
+              else {
                 int nextSeed = DateTime.now().millisecondsSinceEpoch;
                 Random rng = Random(nextSeed);
-                int r = 5 + rng.nextInt(3);
-                int c = 7 + rng.nextInt(4);
+                int r = 5 + rng.nextInt(3); int c = 7 + rng.nextInt(4);
                 networkService.sendNewRound(nextSeed, r, c, currentRound + 1);
                 networkService.onNewRound?.call(nextSeed, r, c, currentRound + 1); 
               }
@@ -408,35 +401,32 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
         int mins = (remainingTime / 60).floor();
         int secs = (remainingTime % 60).floor();
         timerText.text = '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+        
+        // YENİ: Süre yazısını Futbol modunda skorun sağına taşı
+        if (networkService.selectedMap == 4) {
+          timerText.position = Vector2(size.x / 2 + 130, 10);
+        } else {
+          timerText.position = Vector2(size.x / 2 - 40, 20);
+        }
       }
     }
 
-    // TÜM HARİTALARDA LOOT DAĞILIMI
-    if (!isGameOver && networkService.isHost) {
+    if (!isGameOver && networkService.isHost && networkService.selectedMap != 4) { 
       _lootTimer += dt;
       if (_lootTimer > 7.0) {
         _lootTimer = 0;
         final rand = Random();
-        
         double w = networkService.selectedMap == 3 ? 1000.0 : 1500.0;
         double h = networkService.selectedMap == 3 ? 750.0 : 1000.0;
         double x = 50 + rand.nextDouble() * (w - 100);
         double y = 50 + rand.nextDouble() * (h - 100);
         
         int type;
-        if (networkService.selectedMap == 3) {
-          // Arena: Kalkan(2), Roket(3), Lazer(4)
-          type = 2 + rand.nextInt(3); 
-        } else if (networkService.selectedMap == 1) {
-          // Çöl: Yüzdelik Oran Sistemi (%60 Mermi, %20 Can, %20 Kalkan)
+        if (networkService.selectedMap == 3) type = 2 + rand.nextInt(3); 
+        else if (networkService.selectedMap == 1) {
           int chance = rand.nextInt(100);
-          if (chance < 60) type = 1; 
-          else if (chance < 80) type = 0; 
-          else type = 2; 
-        } else {
-          // Diğerleri: Can(0), Kalkan(2)
-          type = rand.nextBool() ? 0 : 2; 
-        }
+          if (chance < 60) type = 1; else if (chance < 80) type = 0; else type = 2; 
+        } else type = rand.nextBool() ? 0 : 2; 
         
         String id = "loot_${DateTime.now().millisecondsSinceEpoch}_${rand.nextInt(100)}";
         networkService.sendSpawnLoot(id, type, x, y);
@@ -452,6 +442,49 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     playerTank.isDead = true; 
     for (var enemy in enemies.values) enemy.isDead = true;
     camera.viewport.add(_endGameHUD); 
+  }
+  
+  // YENİ: Genişletilmiş ve Daha Taktiksel Futbol Sahası (1400x800)
+  void _createFootballField() {
+    final double thickness = 15.0;
+    final double w = 1400.0;
+    final double h = 800.0;
+    Color lineColor = Colors.white;
+    Color obstacleColor = Colors.blue.shade900; // Taktiksel Engel Rengi
+
+    // Dış Sınırlar (Taç çizgileri)
+    Wall topWall = Wall(position: Vector2(0, 0), size: Vector2(w, thickness), color: lineColor);
+    Wall bottomWall = Wall(position: Vector2(0, h - thickness), size: Vector2(w, thickness), color: lineColor);
+    // Sol ve Sağ kenar çizgileri (Kaleler 200px boyunda açık olacak)
+    Wall leftWall1 = Wall(position: Vector2(0, 0), size: Vector2(thickness, 300), color: lineColor);
+    Wall leftWall2 = Wall(position: Vector2(0, 500), size: Vector2(thickness, 300), color: lineColor);
+    Wall rightWall1 = Wall(position: Vector2(w - thickness, 0), size: Vector2(thickness, 300), color: lineColor);
+    Wall rightWall2 = Wall(position: Vector2(w - thickness, 500), size: Vector2(thickness, 300), color: lineColor);
+    
+    // TAKTİKSEL ENGELLER (Kare ve Dikdörtgen Siperler)
+    // Orta alanı nispeten açık bırakıp kenarları savunmaya yönelik tasarladık
+    Wall obs1 = Wall(position: Vector2(500, 150), size: Vector2(400, 30), color: obstacleColor); // Üst uzun siper
+    Wall obs2 = Wall(position: Vector2(500, 620), size: Vector2(400, 30), color: obstacleColor); // Alt uzun siper
+    
+    Wall obs3 = Wall(position: Vector2(250, 200), size: Vector2(50, 150), color: obstacleColor); // Sol üst kalkan
+    Wall obs4 = Wall(position: Vector2(250, 450), size: Vector2(50, 150), color: obstacleColor); // Sol alt kalkan
+    
+    Wall obs5 = Wall(position: Vector2(1100, 200), size: Vector2(50, 150), color: obstacleColor); // Sağ üst kalkan
+    Wall obs6 = Wall(position: Vector2(1100, 450), size: Vector2(50, 150), color: obstacleColor); // Sağ alt kalkan
+
+    Wall obs7 = Wall(position: Vector2(450, 350), size: Vector2(50, 100), color: obstacleColor); // Orta sol kare
+    Wall obs8 = Wall(position: Vector2(900, 350), size: Vector2(50, 100), color: obstacleColor); // Orta sağ kare
+
+    // KALELER (İçeri Girilirse Gol)
+    Wall goalLeft = Wall(position: Vector2(-40, 300), size: Vector2(50, 200), color: Colors.blue.shade300, isGoal: true, teamId: 0);
+    Wall goalRight = Wall(position: Vector2(1390, 300), size: Vector2(50, 200), color: Colors.red.shade300, isGoal: true, teamId: 1);
+
+    currentWalls.addAll([topWall, bottomWall, leftWall1, leftWall2, rightWall1, rightWall2, goalLeft, goalRight, obs1, obs2, obs3, obs4, obs5, obs6, obs7, obs8]);
+    world.addAll(currentWalls);
+    
+    // Topu Sahanın Merkezine (700x400) Ekle
+    ball = Football(position: Vector2(700, 400));
+    world.add(ball!);
   }
 
   void _buildArenaMaze(int seed, int rows, int cols) {
@@ -477,11 +510,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       
       for (int dir in dirs) {
         int nx = cx, ny = cy;
-        if (dir == 0) ny -= 1;
-        else if (dir == 1) nx += 1;
-        else if (dir == 2) ny += 1;
-        else if (dir == 3) nx -= 1;
-
+        if (dir == 0) ny -= 1; else if (dir == 1) nx += 1; else if (dir == 2) ny += 1; else if (dir == 3) nx -= 1;
         if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !grid[ny][nx].visited) {
           if (dir == 0) { grid[cy][cx].top = false; grid[ny][nx].bottom = false; }
           else if (dir == 1) { grid[cy][cx].right = false; grid[ny][nx].left = false; }
@@ -492,17 +521,13 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       }
     }
     dfs(0, 0); 
-
     for (int y = 0; y < rows; y++) {
       for (int x = 0; x < cols; x++) {
         if (rng.nextDouble() < 0.25) grid[y][x].right = false; 
         if (rng.nextDouble() < 0.25) grid[y][x].bottom = false;
       }
     }
-
-    double cellW = w / cols;
-    double cellH = h / rows;
-
+    double cellW = w / cols; double cellH = h / rows;
     for (int y = 0; y < rows; y++) {
       for (int x = 0; x < cols; x++) {
         if (grid[y][x].bottom && y < rows - 1) {
@@ -577,11 +602,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     for (int row = 0; row < mapLayout.length; row++) {
       for (int col = 0; col < mapLayout[row].length; col++) {
         if (mapLayout[row][col] == 1) {
-          Wall wall = Wall(
-            position: Vector2(col * tileWidth + 20, row * tileHeight + 20),
-            size: Vector2(tileWidth * 0.6, tileHeight * 0.4),
-            color: wallColor,
-          );
+          Wall wall = Wall(position: Vector2(col * tileWidth + 20, row * tileHeight + 20), size: Vector2(tileWidth * 0.6, tileHeight * 0.4), color: wallColor);
           currentWalls.add(wall);
           world.add(wall);
         }

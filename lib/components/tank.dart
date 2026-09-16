@@ -15,20 +15,20 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   late int maxHealth;
   bool isDead = false;
   int ammo = -1;
-  
-  int nextShotType = 0; // 0(Normal), 3(Roket), 4(Lazer)
+  int nextShotType = 0; 
+  int team = 0; // YENİ: Takım numarası
 
   bool isShielded = true; 
   double shieldTimer = 5.0; 
 
   late Vector2 _previousPosition;
-  final Vector2 spawnPosition;
+  late Vector2 spawnPosition;
 
   late final TextPaint nameTextPaint;
   late final double nameWidth;
 
   final Paint trackPaint = Paint()..color = Colors.black87;
-  final Paint bodyPaint = Paint()..color = const Color.fromARGB(255, 34, 139, 34);
+  late final Paint bodyPaint; // YENİ: Dinamik Takım Rengi
   final Paint turretPaint = Paint()..color = const Color.fromARGB(255, 20, 80, 20);
   final Paint barrelPaint = Paint()..color = Colors.grey.shade400..strokeWidth = 4;
   
@@ -40,29 +40,21 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
 
   double _timeSinceLastSync = 0;
   final double _syncRate = 1.0 / 20.0;
-  
   Vector2 _currentVelocity = Vector2.zero();
 
   Tank({required this.playerName, required this.spawnPosition, required this.joystick, required this.networkService})
       : super(position: spawnPosition, size: Vector2(28, 32), anchor: Anchor.center) {
     _previousPosition = position.clone();
+    team = networkService.myTeam;
+    
+    // Kendi tankın her zaman takımınla aynı olan net YEŞİL renktedir
+    bodyPaint = Paint()..color = Colors.green.shade600;
 
-    if (networkService.selectedMap == 3) {
-      maxHealth = 1;
-      health = 1;
-    } else {
-      maxHealth = 5;
-      health = 5;
-    }
-
+    if (networkService.selectedMap == 3) { maxHealth = 1; health = 1; } 
+    else { maxHealth = 5; health = 5; }
     if (networkService.selectedMap == 1) ammo = 10; 
 
-    const textStyle = TextStyle(
-      color: Colors.white, 
-      fontSize: 12, 
-      fontWeight: FontWeight.bold,
-      shadows: [Shadow(blurRadius: 3.0, color: Colors.black, offset: Offset(1.0, 1.0))]
-    );
+    const textStyle = TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold, shadows: [Shadow(blurRadius: 3.0, color: Colors.black, offset: Offset(1.0, 1.0))]);
     nameTextPaint = TextPaint(style: textStyle);
     final tp = TextPainter(text: TextSpan(text: playerName, style: textStyle), textDirection: TextDirection.ltr);
     tp.layout();
@@ -92,6 +84,12 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     if (isDead) return;
     isDead = true;
     networkService.sendDied(killerId);
+    
+    // YENİ: Top sendeyken ölürsen top düşer
+    if (gameRef.ball?.ownerId == networkService.myId) {
+      gameRef.ball?.shootBall(angle);
+      networkService.sendShootBall(position.x, position.y, angle);
+    }
 
     if (networkService.selectedMap == 3) return;
 
@@ -105,6 +103,9 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
       networkService.sendShield(true);
       
       if (networkService.selectedMap == 1) ammo = 10;
+      
+      // YENİ: Futbol modundaysa kalede doğ
+      spawnPosition = gameRef.getSpawnPoint(networkService.mySpawnIndex);
       position = spawnPosition.clone();
       _previousPosition = spawnPosition.clone();
       _currentVelocity = Vector2.zero();
@@ -118,35 +119,28 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   @override
   void update(double dt) {
     if (isDead) return;
-
     _previousPosition = position.clone();
     super.update(dt);
     
     if (isShielded) {
       shieldTimer -= dt;
-      if (shieldTimer <= 0) {
-        isShielded = false;
-        networkService.sendShield(false);
-      }
+      if (shieldTimer <= 0) { isShielded = false; networkService.sendShield(false); }
     }
 
     bool isMoving = !joystick.delta.isZero();
     bool isIce = networkService.selectedMap == 2;
     double maxSpeed = isIce ? 220.0 : 150.0;
+    
+    // Top bendeyse hızım %15 düşer ki pas atmaya teşvik etsin
+    if (gameRef.ball?.ownerId == networkService.myId) maxSpeed *= 0.85; 
 
     if (isMoving) {
       Vector2 targetVelocity = joystick.relativeDelta * maxSpeed;
-      if (isIce) {
-        _currentVelocity.lerp(targetVelocity, dt * 2.0); 
-      } else {
-        _currentVelocity = targetVelocity; 
-      }
+      if (isIce) _currentVelocity.lerp(targetVelocity, dt * 2.0); 
+      else _currentVelocity = targetVelocity; 
     } else {
-      if (isIce) {
-        _currentVelocity.lerp(Vector2.zero(), dt * 2.5); 
-      } else {
-        _currentVelocity = Vector2.zero(); 
-      }
+      if (isIce) _currentVelocity.lerp(Vector2.zero(), dt * 2.5); 
+      else _currentVelocity = Vector2.zero(); 
     }
 
     if (_currentVelocity.length > 2.0) { 
@@ -167,7 +161,6 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   @override
   void render(Canvas canvas) {
     if (isDead) return;
-
     canvas.save();
     canvas.translate(size.x / 2, size.y / 2);
 
@@ -175,7 +168,6 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(8, -16, 6, 32), const Radius.circular(2)), trackPaint);
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(-9, -12, 18, 24), const Radius.circular(4)), bodyPaint);
     
-    // Namlu Rengi: Özel mermi yüklenmişse oyuncuyu uyarır
     Paint activeBarrel = barrelPaint;
     if (nextShotType == 3) activeBarrel = Paint()..color = Colors.purpleAccent..strokeWidth = 4;
     else if (nextShotType == 4) activeBarrel = Paint()..color = Colors.cyanAccent..strokeWidth = 4;
@@ -189,12 +181,10 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     }
 
     canvas.rotate(-angle);
-
     final barWidth = size.x;
     final barHeight = 5.0;
     
     nameTextPaint.render(canvas, playerName, Vector2(-nameWidth / 2, -42)); 
-    
     final barOffset = Vector2(-size.x / 2, -size.y / 2 - 10); 
     canvas.drawRect(Rect.fromLTWH(barOffset.x, barOffset.y, barWidth, barHeight), hpBasePaint);
     canvas.drawRect(Rect.fromLTWH(barOffset.x, barOffset.y, barWidth * (health / maxHealth), barHeight), hpCurrentPaint);

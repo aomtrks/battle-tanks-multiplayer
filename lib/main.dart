@@ -27,7 +27,7 @@ class _MainMenuState extends State<MainMenu> {
   final TextEditingController _ipController = TextEditingController();
   
   bool _inLobby = false;
-  bool _inSettings = false; // Ayarlar ekranı kontrolcüsü
+  bool _inSettings = false; 
   String _hostIp = '';
   List<Map<String, dynamic>> _players = [];
 
@@ -110,14 +110,14 @@ class _MainMenuState extends State<MainMenu> {
 
   @override
   Widget build(BuildContext context) {
-    if (_inSettings) return Scaffold(body: _buildSettingsScreen()); // AYARLAR EKRANI
+    if (_inSettings) return Scaffold(body: _buildSettingsScreen()); 
     
     return Scaffold(
       backgroundColor: Colors.blueGrey.shade900,
       body: Center(
         child: SingleChildScrollView(
           child: Container(
-            width: 500,
+            width: 550,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
             child: !_inLobby ? _buildJoinScreen() : _buildLobbyScreen(),
@@ -127,11 +127,10 @@ class _MainMenuState extends State<MainMenu> {
     );
   }
 
-  // TAM EKRAN KONTROL AYARLARI EKRANI
   Widget _buildSettingsScreen() {
     return Stack(
       children: [
-        Container(color: Colors.grey.shade800), // Arka plan
+        Container(color: Colors.grey.shade800), 
         Align(
           alignment: Alignment.topCenter,
           child: Padding(
@@ -144,7 +143,6 @@ class _MainMenuState extends State<MainMenu> {
             ),
           ),
         ),
-        // Sürüklenebilir Joystick Temsili
         Positioned(
           left: GameSettings.joyLeft,
           bottom: GameSettings.joyBottom,
@@ -164,7 +162,6 @@ class _MainMenuState extends State<MainMenu> {
             ),
           ),
         ),
-        // Sürüklenebilir Ateş Butonu Temsili
         Positioned(
           right: GameSettings.fireRight,
           bottom: GameSettings.fireBottom,
@@ -228,6 +225,7 @@ class _MainMenuState extends State<MainMenu> {
       if (id == 1) return "Çöl";
       if (id == 2) return "Buzul";
       if (id == 3) return "Arena (Hayatta Kalma)";
+      if (id == 4) return "Futbol (Takım)"; // YENİ
       return "Klasik";
     }
 
@@ -241,7 +239,6 @@ class _MainMenuState extends State<MainMenu> {
             IconButton(
               icon: const Icon(Icons.settings, color: Colors.blueGrey, size: 30),
               onPressed: () => setState(() => _inSettings = true),
-              tooltip: "Kontrolleri Ayarla",
             )
           ],
         ),
@@ -257,10 +254,11 @@ class _MainMenuState extends State<MainMenu> {
               DropdownButton<int>(
                 value: _networkService.selectedMap,
                 items: const [
-                  DropdownMenuItem(value: 0, child: Text("Klasik Harita")),
-                  DropdownMenuItem(value: 1, child: Text("Çöl Haritası")),
-                  DropdownMenuItem(value: 2, child: Text("Buzul Haritası")),
-                  DropdownMenuItem(value: 3, child: Text("Arena Haritası")), 
+                  DropdownMenuItem(value: 0, child: Text("Klasik")),
+                  DropdownMenuItem(value: 1, child: Text("Çöl")),
+                  DropdownMenuItem(value: 2, child: Text("Buzul")),
+                  DropdownMenuItem(value: 3, child: Text("Arena")), 
+                  DropdownMenuItem(value: 4, child: Text("Futbol")), // YENİ
                 ],
                 onChanged: (val) {
                   int newMap = val ?? 0;
@@ -276,14 +274,11 @@ class _MainMenuState extends State<MainMenu> {
                   DropdownMenuItem(value: 3, child: Text("3 El")),
                   DropdownMenuItem(value: 5, child: Text("5 El")),
                   DropdownMenuItem(value: 10, child: Text("10 El")),
-                  DropdownMenuItem(value: 15, child: Text("15 El")),
-                  DropdownMenuItem(value: 30, child: Text("30 El")),
                 ]
                 : const [
                   DropdownMenuItem(value: 60, child: Text("1 Dakika")),
                   DropdownMenuItem(value: 120, child: Text("2 Dakika")),
                   DropdownMenuItem(value: 300, child: Text("5 Dakika")),
-                  DropdownMenuItem(value: 300, child: Text("10 Dakika")),
                 ],
                 onChanged: (val) {
                   _networkService.updateLobbySettings(_networkService.selectedMap, val ?? 60);
@@ -313,7 +308,17 @@ class _MainMenuState extends State<MainMenu> {
             itemBuilder: (context, index) => ListTile(
               leading: const Icon(Icons.person),
               title: Text(_players[index]['name']),
-              trailing: Text("${_players[index]['score']} Puan", style: const TextStyle(fontWeight: FontWeight.bold)),
+              // YENİ: Futbol modu seçiliyse Host takımları düzenleyebilir
+              trailing: _networkService.selectedMap == 4 
+              ? ElevatedButton(
+                  onPressed: _networkService.isHost ? () {
+                    _networkService.toggleTeam(_players[index]['id']);
+                    setState((){});
+                  } : null,
+                  style: ElevatedButton.styleFrom(backgroundColor: _players[index]['team'] == 0 ? Colors.blue : Colors.red),
+                  child: Text("Takım ${_players[index]['team'] == 0 ? 'A (Mavi)' : 'B (Kırmızı)'}", style: const TextStyle(color: Colors.white)),
+                )
+              : Text("${_players[index]['score']} Puan", style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
         ),
@@ -324,11 +329,6 @@ class _MainMenuState extends State<MainMenu> {
             style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: Colors.redAccent),
             child: const Text("OYUNU BAŞLAT", style: TextStyle(color: Colors.white, fontSize: 18)),
           )
-        else
-          const Padding(
-            padding: EdgeInsets.all(8.0),
-            child: Text("Kurucunun oyunu başlatması bekleniyor...", style: TextStyle(fontStyle: FontStyle.italic)),
-          ),
       ],
     );
   }
