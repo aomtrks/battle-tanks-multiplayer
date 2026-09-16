@@ -11,7 +11,6 @@ import '../components/bullet.dart';
 import '../components/loot_box.dart';
 import '../network/network_service.dart';
 
-// --- ANLIK ÖLÜM SKOR EKRANI ---
 class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   bool isVisible = false;
   final Paint bgPaint = Paint()..color = Colors.black87;
@@ -31,7 +30,6 @@ class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   }
 }
 
-// --- OYUN SONU LİDERLİK TABLOSU ---
 class EndGameHUD extends PositionComponent with HasGameRef<TankGame> {
   final Paint bgPaint = Paint()..color = Colors.black87;
   final TextPaint titlePaint = TextPaint(style: const TextStyle(color: Colors.amber, fontSize: 36, fontWeight: FontWeight.bold));
@@ -46,11 +44,9 @@ class EndGameHUD extends PositionComponent with HasGameRef<TankGame> {
     final cx = gameRef.size.x / 2;
     final cy = gameRef.size.y / 2;
 
-    // Arka Plan
     canvas.drawRect(Rect.fromLTWH(0, 0, gameRef.size.x, gameRef.size.y), bgPaint);
     titlePaint.render(canvas, "SÜRE BİTTİ - LİDERLİK TABLOSU", Vector2(cx - 280, 40));
 
-    // Skorları büyükten küçüğe sırala
     List<Map<String, dynamic>> sortedPlayers = List.from(gameRef.networkService.lobbyPlayers);
     sortedPlayers.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
 
@@ -61,7 +57,6 @@ class EndGameHUD extends PositionComponent with HasGameRef<TankGame> {
       yPos += 45;
     }
 
-    // Butonları Çiz
     canvas.drawRRect(RRect.fromRectAndRadius(gameRef.continueRect, const Radius.circular(8)), btnContinuePaint);
     btnTextPaint.render(canvas, "Devam Et (Lobi)", Vector2(gameRef.continueRect.left + 20, gameRef.continueRect.top + 15));
 
@@ -78,7 +73,6 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   late JoystickComponent joystick;
   late Tank playerTank;
   late PositionComponent fireButton;
-  
   late TextComponent ammoText;
   late TextComponent timerText;
 
@@ -89,12 +83,9 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   final Map<String, LootBox> loots = {};
   
   double _lootTimer = 0;
-  
-  // Süre Sistemi
   late double remainingTime;
   bool isGameOver = false;
 
-  // Tıklama tespiti için oyun sonu buton alanları
   late Rect continueRect;
   late Rect exitRect;
 
@@ -102,7 +93,9 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
   @override
   Color backgroundColor() {
-    return networkService.selectedMap == 1 ? const Color(0xFFD2B48C) : Colors.blueGrey.shade900;
+    if (networkService.selectedMap == 1) return const Color(0xFFD2B48C);
+    if (networkService.selectedMap == 2) return const Color(0xFFE0F7FA); // YENİ: Buzul arkaplanı
+    return Colors.blueGrey.shade900;
   }
 
   Vector2 getSpawnPoint(int index) {
@@ -145,13 +138,11 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
     networkService.onHealthUpdate = (playerId, newHealth) => enemies[playerId]?.updateHealth(newHealth);
     networkService.onPlayerRespawn = (playerId, x, y, angle) => enemies[playerId]?.respawn(x, y, angle);
-
     networkService.onLootSpawned = (id, type, x, y) {
       final loot = LootBox(id: id, type: type, position: Vector2(x, y));
       loots[id] = loot;
       world.add(loot);
     };
-
     networkService.onLootCollected = (id) {
       if (loots.containsKey(id)) {
         loots[id]?.removeFromParent();
@@ -172,13 +163,13 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
     ammoText = TextComponent(
       text: '',
-      textRenderer: TextPaint(style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+      textRenderer: TextPaint(style: TextStyle(color: networkService.selectedMap == 2 ? Colors.black : Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
       position: Vector2(size.x - 180, size.y - 150),
     );
 
     timerText = TextComponent(
       text: '',
-      textRenderer: TextPaint(style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+      textRenderer: TextPaint(style: TextStyle(color: networkService.selectedMap == 2 ? Colors.black : Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
       position: Vector2(size.x / 2 - 40, 20),
     );
 
@@ -203,24 +194,17 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   @override
   void onTapDown(TapDownEvent event) {
     super.onTapDown(event);
-    
-    // Oyun bittiyse tıklama mantığı sadece butonlara geçer
     if (isGameOver) {
-      if (continueRect.contains(event.canvasPosition.toOffset())) {
-        onContinue();
-      } else if (exitRect.contains(event.canvasPosition.toOffset())) {
-        onLeave();
-      }
+      if (continueRect.contains(event.canvasPosition.toOffset())) onContinue();
+      else if (exitRect.contains(event.canvasPosition.toOffset())) onLeave();
       return;
     }
-
     if (fireButton.containsPoint(event.canvasPosition)) _shoot();
   }
 
   void _shoot() {
     if (playerTank.isDead) return;
     if (playerTank.ammo == 0) return; 
-    
     if (playerTank.ammo > 0) playerTank.ammo--;
 
     _spawnBullet(playerTank.position.x, playerTank.position.y, playerTank.angle, ownerId: networkService.myId, isEnemy: false);
@@ -236,7 +220,6 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   void update(double dt) {
     super.update(dt);
     
-    // Buton rect'lerini ekran boyutuna göre güncelle
     continueRect = Rect.fromLTWH(size.x / 2 - 180, size.y / 2 + 100, 170, 50);
     exitRect = Rect.fromLTWH(size.x / 2 + 10, size.y / 2 + 100, 170, 50);
     
@@ -252,9 +235,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
         remainingTime = 0;
         isGameOver = true;
         playerTank.isDead = true; 
-        for (var enemy in enemies.values) {
-          enemy.isDead = true;
-        }
+        for (var enemy in enemies.values) enemy.isDead = true;
         camera.viewport.add(_endGameHUD); 
       }
     }
@@ -287,35 +268,53 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     final double w = 1500.0;
     final double h = 1000.0;
     
-    Color wallColor = networkService.selectedMap == 1 ? Colors.brown.shade800 : Colors.grey.shade800;
+    Color wallColor;
+    if (networkService.selectedMap == 1) wallColor = Colors.brown.shade800;
+    else if (networkService.selectedMap == 2) wallColor = Colors.cyan.shade700; // YENİ: Buzul Duvarı
+    else wallColor = Colors.grey.shade800;
 
     world.add(Wall(position: Vector2(0, 0), size: Vector2(w, thickness), color: wallColor));
     world.add(Wall(position: Vector2(0, h - thickness), size: Vector2(w, thickness), color: wallColor));
     world.add(Wall(position: Vector2(0, 0), size: Vector2(thickness, h), color: wallColor));
     world.add(Wall(position: Vector2(w - thickness, 0), size: Vector2(thickness, h), color: wallColor));
 
-    final List<List<int>> mapLayout = networkService.selectedMap == 0 
-    ? [ 
-      [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-      [0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1],
-      [0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0],
-      [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0],
-      [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-    ] 
-    : [ 
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-      [0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-      [0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-      [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-    ];
+    List<List<int>> mapLayout;
+    
+    if (networkService.selectedMap == 1) {
+      mapLayout = [ 
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+        [0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+        [0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+        [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+      ];
+    } else if (networkService.selectedMap == 2) { // YENİ: BUZUL HARİTASI
+      mapLayout = [
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0],
+        [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+        [0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0],
+        [0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0],
+        [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0],
+      ];
+    } else {
+      mapLayout = [ 
+        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+        [0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1],
+        [0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0],
+        [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0],
+        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+      ];
+    }
 
     double tileWidth = w / mapLayout[0].length;
     double tileHeight = h / mapLayout.length;

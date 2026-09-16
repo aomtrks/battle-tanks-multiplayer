@@ -12,14 +12,16 @@ class Bullet extends PositionComponent with CollisionCallbacks {
   final String ownerId;
 
   late final Paint _bulletPaint;
-  bool _hasHit = false;
-  double _lifeTime = 0.0;
-  static const double _maxLifeTime = 3.5; // Boşa giden mermileri haritadan siler
+  bool _hasHitTank = false; // Tanklara tek vuruş kontrolü
+  
+  // YENİ: Sekme (Bounce) Mantığı
+  int _bounceCount = 0;
+  static const int _maxBounces = 3; // Duvarlardan 3 kere seker, 4.de yok olur
 
   Bullet({required Vector2 position, required double angle, required this.ownerId, this.isEnemy = false})
       : super(position: position, size: Vector2(8, 8), anchor: Anchor.center) {
     this.angle = angle;
-    velocity = Vector2(cos(angle - pi / 2), sin(angle - pi / 2)) * speed;
+    velocity = Vector2(sin(angle), -cos(angle)) * speed; 
 
     _bulletPaint = Paint()
       ..color = isEnemy ? Colors.orange : Colors.yellow
@@ -35,11 +37,6 @@ class Bullet extends PositionComponent with CollisionCallbacks {
   void update(double dt) {
     super.update(dt);
     position += velocity * dt;
-
-    _lifeTime += dt;
-    if (_lifeTime >= _maxLifeTime) {
-      removeFromParent();
-    }
   }
 
   @override
@@ -50,15 +47,45 @@ class Bullet extends PositionComponent with CollisionCallbacks {
   @override
   void onCollision(Set<Vector2> intersectionPoints, PositionComponent other) {
     super.onCollision(intersectionPoints, other);
-    if (_hasHit) return;
-
+    
     if (other is Wall) {
-      _hasHit = true;
-      removeFromParent();
+      if (_bounceCount >= _maxBounces) {
+        removeFromParent();
+        return;
+      }
+      
+      _bounceCount++;
+      
+      // Mermiyi duvarın içinden bir miktar geri çıkart (Yapışmayı/Glitch'i önler)
+      position -= velocity.normalized() * 5.0; 
+
+      // Çarpışma yönünü tespit edip vektörü ters çevirme (AABB Kutu Çarpışması)
+      Rect bulletRect = Rect.fromCenter(center: position.toOffset(), width: size.x, height: size.y);
+      Rect wallRect = other.toRect();
+      
+      double leftDist = (bulletRect.right - wallRect.left).abs();
+      double rightDist = (bulletRect.left - wallRect.right).abs();
+      double topDist = (bulletRect.bottom - wallRect.top).abs();
+      double bottomDist = (bulletRect.top - wallRect.bottom).abs();
+      
+      double minDist = [leftDist, rightDist, topDist, bottomDist].reduce(min);
+      
+      // X veya Y ekseninde sekme (Ricochet)
+      if (minDist == leftDist || minDist == rightDist) {
+        velocity.x = -velocity.x; 
+      } else {
+        velocity.y = -velocity.y; 
+      }
+      
+      // Merminin görsel dönüş açısını yeni hıza göre ayarla
+      angle = atan2(velocity.y, velocity.x) + pi/2;
+      return; 
     }
 
+    // Tank Vurulması
     if (other is Tank && ownerId != other.networkService.myId) {
-      _hasHit = true;
+      if (_hasHitTank) return;
+      _hasHitTank = true;
       other.takeDamage(ownerId);
       removeFromParent();
     }

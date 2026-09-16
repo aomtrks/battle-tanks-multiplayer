@@ -39,9 +39,7 @@ class _MainMenuState extends State<MainMenu> {
   void _bindLobbyListeners() {
     _networkService.onLobbyUpdated = (players) {
       if (!mounted) return;
-      setState(() {
-        _players = players;
-      });
+      setState(() => _players = players);
     };
 
     _networkService.onGameStarted = () {
@@ -51,11 +49,9 @@ class _MainMenuState extends State<MainMenu> {
   }
 
   Future<void> _launchGame() async {
-    // Oyuna geçerken dinleyicileri iptal ediyoruz ki arka planda setState hatası fırlatmasın
     _networkService.onLobbyUpdated = null;
     _networkService.onGameStarted = null;
     
-    // pushReplacement yerine push kullanarak oyun bittiğinde bu ekrana geri dönülmesini sağlıyoruz
     final exitCompletely = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -63,8 +59,8 @@ class _MainMenuState extends State<MainMenu> {
           body: GameWidget(
             game: TankGame(
               networkService: _networkService,
-              onContinue: () => Navigator.pop(context, false), // Lobiye dön
-              onLeave: () => Navigator.pop(context, true),     // Tamamen çık
+              onContinue: () => Navigator.pop(context, false),
+              onLeave: () => Navigator.pop(context, true),
             ),
           ),
         ),
@@ -80,7 +76,6 @@ class _MainMenuState extends State<MainMenu> {
         });
       }
     } else {
-      // Devam et denilmişse, dinleyicileri tekrar bağla ve lobiyi yenile
       _bindLobbyListeners();
       if (mounted) setState(() {});
     }
@@ -155,6 +150,12 @@ class _MainMenuState extends State<MainMenu> {
   }
 
   Widget _buildLobbyScreen() {
+    String getMapName(int id) {
+      if (id == 1) return "Çöl";
+      if (id == 2) return "Buzul";
+      return "Klasik";
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -173,6 +174,7 @@ class _MainMenuState extends State<MainMenu> {
                 items: const [
                   DropdownMenuItem(value: 0, child: Text("Klasik Harita")),
                   DropdownMenuItem(value: 1, child: Text("Çöl Haritası")),
+                  DropdownMenuItem(value: 2, child: Text("Buzul Haritası")), // YENİ
                 ],
                 onChanged: (val) {
                   _networkService.updateLobbySettings(val ?? 0, _networkService.selectedTime);
@@ -198,7 +200,7 @@ class _MainMenuState extends State<MainMenu> {
             padding: const EdgeInsets.all(8.0),
             child: Text(
               "Kurucu IP: ${_networkService.hostIp}\n"
-              "Harita: ${_networkService.selectedMap == 1 ? 'Çöl' : 'Klasik'} | "
+              "Harita: ${getMapName(_networkService.selectedMap)} | "
               "Süre: ${_networkService.selectedTime ~/ 60} Dk", 
               textAlign: TextAlign.center, 
               style: const TextStyle(color: Colors.red, fontSize: 16, fontWeight: FontWeight.bold)
