@@ -8,6 +8,8 @@ class EnemyTank extends PositionComponent with CollisionCallbacks {
   int health = 5;
   final int maxHealth = 5;
   bool isDead = false;
+  
+  bool isShielded = false; // DÜŞMAN KALKAN DURUMU
 
   late final TextPaint nameTextPaint;
   late final double nameWidth;
@@ -19,12 +21,20 @@ class EnemyTank extends PositionComponent with CollisionCallbacks {
   
   final Paint hpBasePaint = Paint()..color = Colors.grey;
   final Paint hpCurrentPaint = Paint()..color = Colors.green;
+  
+  final Paint shieldPaint = Paint()..color = Colors.blueAccent.withOpacity(0.4)..style = PaintingStyle.fill;
+  final Paint shieldBorderPaint = Paint()..color = Colors.cyanAccent..style = PaintingStyle.stroke..strokeWidth = 2;
 
   Vector2? targetPosition;
   double? targetAngle;
 
   EnemyTank({required this.playerName, required Vector2 position}) : super(position: position, size: Vector2(28, 32), anchor: Anchor.center) {
-    const textStyle = TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold);
+    const textStyle = TextStyle(
+      color: Colors.white, 
+      fontSize: 12, 
+      fontWeight: FontWeight.bold,
+      shadows: [Shadow(blurRadius: 3.0, color: Colors.black, offset: Offset(1.0, 1.0))]
+    );
     nameTextPaint = TextPaint(style: textStyle);
     final tp = TextPainter(text: TextSpan(text: playerName, style: textStyle), textDirection: TextDirection.ltr);
     tp.layout();
@@ -40,10 +50,15 @@ class EnemyTank extends PositionComponent with CollisionCallbacks {
     health = newHealth;
     isDead = health <= 0;
   }
+  
+  void setShield(bool state) {
+    isShielded = state;
+  }
 
   void respawn(double newX, double newY, double newAngle) {
     health = maxHealth;
     isDead = false;
+    isShielded = false;
     position = Vector2(newX, newY);
     targetPosition = position.clone();
     angle = newAngle;
@@ -87,17 +102,23 @@ class EnemyTank extends PositionComponent with CollisionCallbacks {
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(-9, -12, 18, 24), const Radius.circular(4)), bodyPaint);
     canvas.drawLine(Offset.zero, const Offset(0, -25), barrelPaint);
     canvas.drawCircle(Offset.zero, 7, turretPaint);
+    
+    if (isShielded) {
+      canvas.drawCircle(Offset.zero, 25, shieldPaint);
+      canvas.drawCircle(Offset.zero, 25, shieldBorderPaint);
+    }
 
     canvas.rotate(-angle);
 
     final barWidth = size.x;
     final barHeight = 5.0;
-    final barOffset = Vector2(-size.x / 2, -size.y / 2 - 20);
-
+    
+    // UI Çakışması Giderildi
+    nameTextPaint.render(canvas, playerName, Vector2(-nameWidth / 2, -42));
+    
+    final barOffset = Vector2(-size.x / 2, -size.y / 2 - 10);
     canvas.drawRect(Rect.fromLTWH(barOffset.x, barOffset.y, barWidth, barHeight), hpBasePaint);
     canvas.drawRect(Rect.fromLTWH(barOffset.x, barOffset.y, barWidth * (health / maxHealth), barHeight), hpCurrentPaint);
-
-    nameTextPaint.render(canvas, playerName, Vector2(-nameWidth / 2, -40));
 
     canvas.restore();
   }

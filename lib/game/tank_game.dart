@@ -94,7 +94,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   @override
   Color backgroundColor() {
     if (networkService.selectedMap == 1) return const Color(0xFFD2B48C);
-    if (networkService.selectedMap == 2) return const Color(0xFFE0F7FA); // YENİ: Buzul arkaplanı
+    if (networkService.selectedMap == 2) return const Color(0xFFE0F7FA);
     return Colors.blueGrey.shade900;
   }
 
@@ -138,6 +138,8 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
     networkService.onHealthUpdate = (playerId, newHealth) => enemies[playerId]?.updateHealth(newHealth);
     networkService.onPlayerRespawn = (playerId, x, y, angle) => enemies[playerId]?.respawn(x, y, angle);
+    networkService.onShieldUpdate = (playerId, state) => enemies[playerId]?.setShield(state); // Düşman kalkan güncellemesi
+
     networkService.onLootSpawned = (id, type, x, y) {
       final loot = LootBox(id: id, type: type, position: Vector2(x, y));
       loots[id] = loot;
@@ -161,15 +163,22 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
     fireButton = CircleComponent(radius: 40, paint: Paint()..color = Colors.red.withAlpha(150), position: Vector2(size.x - 100, size.y - 100));
 
+    // Metinlere gölge eklendi
     ammoText = TextComponent(
       text: '',
-      textRenderer: TextPaint(style: TextStyle(color: networkService.selectedMap == 2 ? Colors.black : Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+      textRenderer: TextPaint(style: const TextStyle(
+        color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold,
+        shadows: [Shadow(blurRadius: 3.0, color: Colors.black, offset: Offset(1.0, 1.0))]
+      )),
       position: Vector2(size.x - 180, size.y - 150),
     );
 
     timerText = TextComponent(
       text: '',
-      textRenderer: TextPaint(style: TextStyle(color: networkService.selectedMap == 2 ? Colors.black : Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+      textRenderer: TextPaint(style: const TextStyle(
+        color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold,
+        shadows: [Shadow(blurRadius: 3.0, color: Colors.black, offset: Offset(1.0, 1.0))]
+      )),
       position: Vector2(size.x / 2 - 40, 20),
     );
 
@@ -244,14 +253,22 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     int secs = (remainingTime % 60).floor();
     timerText.text = '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
 
-    if (!isGameOver && networkService.isHost && networkService.selectedMap == 1) {
+    // TÜM HARİTALARDA LOOT ÜRETİMİ
+    if (!isGameOver && networkService.isHost) {
       _lootTimer += dt;
       if (_lootTimer > 7.0) {
         _lootTimer = 0;
         final rand = Random();
         double x = 150 + rand.nextDouble() * 1200;
         double y = 150 + rand.nextDouble() * 700;
-        int type = rand.nextBool() ? 0 : 1; 
+        
+        int type;
+        if (networkService.selectedMap == 1) {
+          type = rand.nextInt(3); // Çölde (0: Can, 1: Mermi, 2: Kalkan)
+        } else {
+          type = rand.nextBool() ? 0 : 2; // Diğerlerinde (0: Can, 2: Kalkan)
+        }
+        
         String id = "loot_${DateTime.now().millisecondsSinceEpoch}_${rand.nextInt(100)}";
         
         networkService.sendSpawnLoot(id, type, x, y);
@@ -270,7 +287,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     
     Color wallColor;
     if (networkService.selectedMap == 1) wallColor = Colors.brown.shade800;
-    else if (networkService.selectedMap == 2) wallColor = Colors.cyan.shade700; // YENİ: Buzul Duvarı
+    else if (networkService.selectedMap == 2) wallColor = Colors.cyan.shade700;
     else wallColor = Colors.grey.shade800;
 
     world.add(Wall(position: Vector2(0, 0), size: Vector2(w, thickness), color: wallColor));
@@ -291,7 +308,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
         [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
       ];
-    } else if (networkService.selectedMap == 2) { // YENİ: BUZUL HARİTASI
+    } else if (networkService.selectedMap == 2) { 
       mapLayout = [
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         [0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0],

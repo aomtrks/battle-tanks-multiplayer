@@ -8,7 +8,7 @@ class NetworkService {
   bool isHost = false;
   String? hostIp;
   int selectedMap = 0; 
-  int selectedTime = 60; // YENİ: Süre Değişkeni
+  int selectedTime = 60; 
 
   final String myId = DateTime.now().millisecondsSinceEpoch.toString();
   String myName = "Oyuncu";
@@ -25,12 +25,12 @@ class NetworkService {
   Function(String playerId, double x, double y, double angle)? onPlayerRespawn;
   Function(String id, int type, double x, double y)? onLootSpawned;
   Function(String id)? onLootCollected;
+  Function(String playerId, bool state)? onShieldUpdate; // YENİ: Kalkan Senkronizasyonu
 
   Future<String> startHosting(String name) async {
     isHost = true;
     myName = name;
     
-    // reuse özelliklerini açıyoruz ki oda çıkış/girişlerinde port kilitlenmesin
     _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port, reuseAddress: true, reusePort: true);
     _socket!.readEventsEnabled = true;
     _listen();
@@ -67,7 +67,7 @@ class NetworkService {
 
   void startGame() {
     if (isHost) {
-      for (var p in lobbyPlayers) p['score'] = 0; // Oyuna girerken skorları sıfırla
+      for (var p in lobbyPlayers) p['score'] = 0; 
       _broadcastLobby();
       for (int i = 0; i < 3; i++) {
         _broadcast(utf8.encode(jsonEncode({'action': 'start_game'})));
@@ -136,6 +136,8 @@ class NetworkService {
             onLootSpawned!(data['lootId'], data['type'], (data['x'] as num).toDouble(), (data['y'] as num).toDouble());
           } else if (data['action'] == 'collect_loot' && onLootCollected != null) {
             onLootCollected!(data['lootId']);
+          } else if (data['action'] == 'shield' && onShieldUpdate != null) {
+            onShieldUpdate!(senderId, data['state']); // Kalkan dinleyici
           }
         } catch (e) {
           print("UDP Hata: $e");
@@ -174,6 +176,7 @@ class NetworkService {
   }
   void sendSpawnLoot(String lootId, int type, double x, double y) => _routeMessage({'action': 'spawn_loot', 'id': myId, 'lootId': lootId, 'type': type, 'x': x, 'y': y});
   void sendCollectLoot(String lootId) => _routeMessage({'action': 'collect_loot', 'id': myId, 'lootId': lootId});
+  void sendShield(bool state) => _routeMessage({'action': 'shield', 'id': myId, 'state': state}); // YENİ
 
   void _routeMessage(Map<String, dynamic> msg) {
     List<int> bytes = utf8.encode(jsonEncode(msg));
