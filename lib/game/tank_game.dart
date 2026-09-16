@@ -11,7 +11,6 @@ import '../components/bullet.dart';
 import '../components/loot_box.dart';
 import '../network/network_service.dart';
 
-// Klasik Süreli Mod İçin Yeniden Doğma Bekleme Ekranı
 class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   bool isVisible = false;
   final Paint bgPaint = Paint()..color = Colors.black87;
@@ -31,7 +30,6 @@ class ScoreboardHUD extends PositionComponent with HasGameRef<TankGame> {
   }
 }
 
-// ARENA MODU MİNİMALİST SOL ÜST SKOR TABLOSU
 class LiveTopScoreHUD extends PositionComponent with HasGameRef<TankGame> {
   final TextPaint textPaint = TextPaint(style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold));
 
@@ -50,7 +48,6 @@ class LiveTopScoreHUD extends PositionComponent with HasGameRef<TankGame> {
   }
 }
 
-// OYUN SONU TABLOSU
 class EndGameHUD extends PositionComponent with HasGameRef<TankGame> {
   final Paint bgPaint = Paint()..color = Colors.black87;
   final TextPaint titlePaint = TextPaint(style: const TextStyle(color: Colors.amber, fontSize: 36, fontWeight: FontWeight.bold));
@@ -85,7 +82,6 @@ class EndGameHUD extends PositionComponent with HasGameRef<TankGame> {
   }
 }
 
-// LABİRENT ALGORİTMASI HÜCRESİ
 class MazeCell {
   int x, y;
   bool top = true, right = true, bottom = true, left = true, visited = false;
@@ -119,7 +115,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
   late Rect continueRect;
   late Rect exitRect;
-  int? currentArenaSeed; // Arena modu tohumu
+  int? currentArenaSeed; 
 
   TankGame({required this.networkService, required this.onContinue, required this.onLeave});
 
@@ -131,7 +127,6 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     return Colors.blueGrey.shade900;
   }
 
-  // SPAWN MANTIĞI: Artık duvar içi doğmaları engellemek için sadece boş hücre köşeleri seçiliyor
   Vector2 getSpawnPoint(int index, {int? seed}) {
     if (networkService.selectedMap == 3) {
       int r = 5, c = 7;
@@ -145,10 +140,10 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       int targetRow = 0, targetCol = 0;
       
       switch (index % 4) {
-        case 0: targetRow = 0; targetCol = 0; break; // Sol Üst
-        case 1: targetRow = r - 1; targetCol = c - 1; break; // Sağ Alt
-        case 2: targetRow = 0; targetCol = c - 1; break; // Sağ Üst
-        case 3: targetRow = r - 1; targetCol = 0; break; // Sol Alt
+        case 0: targetRow = 0; targetCol = 0; break; 
+        case 1: targetRow = r - 1; targetCol = c - 1; break; 
+        case 2: targetRow = 0; targetCol = c - 1; break; 
+        case 3: targetRow = r - 1; targetCol = 0; break; 
       }
       return Vector2(targetCol * cellW + cellW / 2, targetRow * cellH + cellH / 2);
     }
@@ -186,8 +181,8 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       enemies[playerId]?.updatePosition(x, y, angle);
     };
 
-    networkService.onPlayerShoot = (playerId, x, y, angle) {
-      _spawnBullet(x, y, angle, ownerId: playerId, isEnemy: true);
+    networkService.onPlayerShoot = (playerId, x, y, angle, type) {
+      _spawnBullet(x, y, angle, ownerId: playerId, isEnemy: true, type: type);
     };
 
     networkService.onHealthUpdate = (playerId, newHealth) => enemies[playerId]?.updateHealth(newHealth);
@@ -222,8 +217,9 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
       playerTank.health = 1;
       playerTank.isDead = false;
-      playerTank.isShielded = true; // Her elde kalkanla başla
+      playerTank.isShielded = true; 
       playerTank.shieldTimer = 5.0;
+      playerTank.nextShotType = 0; // Elde kalan roketi/lazeri sıfırla
       playerTank.position = getSpawnPoint(networkService.mySpawnIndex, seed: seed);
       playerTank.angle = 0;
       networkService.sendRespawn(playerTank.position.x, playerTank.position.y, 0);
@@ -283,10 +279,9 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
     world.add(playerTank);
     
-    // ARENA MODU İÇİN ÖLÇEKLENMİŞ KAMERA (1000x750'ye odaklanarak tankları büyütür)
     if (networkService.selectedMap == 3) {
       camera.viewfinder.visibleGameSize = Vector2(1000, 750);
-      camera.viewfinder.position = Vector2(500, 375); // Merkez
+      camera.viewfinder.position = Vector2(500, 375); 
       camera.viewfinder.anchor = Anchor.center;
     } else {
       camera.follow(playerTank);
@@ -316,18 +311,23 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     if (playerTank.ammo == 0) return; 
     if (playerTank.ammo > 0) playerTank.ammo--;
 
-    _spawnBullet(playerTank.position.x, playerTank.position.y, playerTank.angle, ownerId: networkService.myId, isEnemy: false);
-    networkService.sendShoot(playerTank.position.x, playerTank.position.y, playerTank.angle);
+    // YENİ: Varsa özel mermiyi yükle, sonra sıfırla
+    int shotType = playerTank.nextShotType;
+    playerTank.nextShotType = 0;
+
+    _spawnBullet(playerTank.position.x, playerTank.position.y, playerTank.angle, ownerId: networkService.myId, isEnemy: false, type: shotType);
+    networkService.sendShoot(playerTank.position.x, playerTank.position.y, playerTank.angle, shotType);
   }
 
-  void _spawnBullet(double x, double y, double angle, {required String ownerId, required bool isEnemy}) {
+  void _spawnBullet(double x, double y, double angle, {required String ownerId, required bool isEnemy, int type = 0}) {
     final offset = Vector2(sin(angle) * 25, -cos(angle) * 25);
     world.add(Bullet(
       position: Vector2(x, y) + offset, 
       angle: angle, 
       ownerId: ownerId, 
       isEnemy: isEnemy,
-      isArena: networkService.selectedMap == 3 // Yeni siyah mermi modu tetikleyicisi
+      bulletType: type, // Mermi tipi atandı
+      isArena: networkService.selectedMap == 3 
     ));
   }
 
@@ -391,16 +391,29 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       }
     }
 
-    if (!isGameOver && networkService.isHost && networkService.selectedMap != 3) {
+    // YENİ: TÜM HARİTALARDA LOOT DAĞILIMI
+    if (!isGameOver && networkService.isHost) {
       _lootTimer += dt;
       if (_lootTimer > 7.0) {
         _lootTimer = 0;
         final rand = Random();
-        double x = 150 + rand.nextDouble() * 1200;
-        double y = 150 + rand.nextDouble() * 700;
+        
+        double w = networkService.selectedMap == 3 ? 1000.0 : 1500.0;
+        double h = networkService.selectedMap == 3 ? 750.0 : 1000.0;
+        double x = 50 + rand.nextDouble() * (w - 100);
+        double y = 50 + rand.nextDouble() * (h - 100);
+        
         int type;
-        if (networkService.selectedMap == 1) type = rand.nextInt(3); 
-        else type = rand.nextBool() ? 0 : 2; 
+        if (networkService.selectedMap == 3) {
+          // Arena: Kalkan(2), Roket(3), Lazer(4)
+          type = 2 + rand.nextInt(3); 
+        } else if (networkService.selectedMap == 1) {
+          // Çöl: Can(0), Mermi(1), Kalkan(2)
+          type = rand.nextInt(3);
+        } else {
+          // Diğerleri: Can(0), Kalkan(2)
+          type = rand.nextBool() ? 0 : 2; 
+        }
         
         String id = "loot_${DateTime.now().millisecondsSinceEpoch}_${rand.nextInt(100)}";
         networkService.sendSpawnLoot(id, type, x, y);
@@ -420,7 +433,6 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
   void _buildArenaMaze(int seed, int rows, int cols) {
     final double thickness = 15.0;
-    // Arena boyutu tankların devasa olmaması ve haritanın kameraya sığması için 1000x750'ye ölçeklendi.
     final double w = 1000.0;
     final double h = 750.0;
     Color wallColor = Colors.grey.shade800;

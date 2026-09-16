@@ -7,11 +7,12 @@ import 'tank.dart';
 import 'wall.dart';
 
 class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankGame> {
-  final double speed = 400.0;
+  late double speed;
   late Vector2 velocity;
   final bool isEnemy;
   final String ownerId;
-  final bool isArena; // YENİ: Arena modu tetikleyicisi
+  final bool isArena; 
+  final int bulletType; // 0: Normal, 3: Roket, 4: Lazer
 
   late final Paint _bulletPaint;
   bool _hasHitTank = false; 
@@ -19,21 +20,30 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
   int _bounceCount = 0;
   static const int _maxBounces = 3; 
   double _lifeTime = 0.0;
+  double _homingTimer = 0.0;
 
-  Bullet({required Vector2 position, required double angle, required this.ownerId, this.isEnemy = false, this.isArena = false})
-      // Arena modunda mermi boyutu 8'den 12'ye çıkarıldı ve daha belirgin yapıldı
-      : super(position: position, size: isArena ? Vector2(12, 12) : Vector2(8, 8), anchor: Anchor.center) {
+  Bullet({required Vector2 position, required double angle, required this.ownerId, this.isEnemy = false, this.isArena = false, this.bulletType = 0})
+      : super(position: position, anchor: Anchor.center) {
     this.angle = angle;
-    velocity = Vector2(sin(angle), -cos(angle)) * speed; 
-
-    if (isArena) {
-      // YENİ: Arena haritasında tamamen siyah ve blursuz net mermi
-      _bulletPaint = Paint()..color = Colors.black;
+    
+    if (bulletType == 4) {
+      // Lazer - Tank boyutunda (28x28), Aşırı Hızlı
+      size = Vector2(28, 28);
+      _bulletPaint = Paint()..color = Colors.cyanAccent;
+      speed = 800.0;
+    } else if (bulletType == 3) {
+      // Roket - Mor ve Yavaş (Kaçabilmek için)
+      size = Vector2(16, 16);
+      _bulletPaint = Paint()..color = Colors.purpleAccent;
+      speed = 350.0;
     } else {
-      _bulletPaint = Paint()
-        ..color = isEnemy ? Colors.orange : Colors.yellow
-        ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 2);
+      // Normal Mermi
+      size = isArena ? Vector2(12, 12) : Vector2(8, 8);
+      _bulletPaint = isArena ? (Paint()..color = Colors.black) : (Paint()..color = isEnemy ? Colors.orange : Colors.yellow..maskFilter = const MaskFilter.blur(BlurStyle.solid, 2));
+      speed = 400.0;
     }
+    
+    velocity = Vector2(sin(angle), -cos(angle)) * speed; 
   }
 
   @override
@@ -47,10 +57,45 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
     position += velocity * dt;
     _lifeTime += dt;
 
-    double maxLife = (gameRef.networkService.selectedMap == 3) ? 10.0 : 3.5;
-    
-    if (_lifeTime >= maxLife) {
-      removeFromParent();
+    // Normal mermiler süre sınırına tabidir, ROKET (3) sonsuza kadar yaşar.
+    if (bulletType != 3) {
+      double maxLife = (gameRef.networkService.selectedMap == 3) ? 10.0 : 3.5;
+      if (_lifeTime >= maxLife) {
+        removeFromParent();
+        return;
+      }
+    }
+
+    // ROKET YÖNLENDİRME (Homing Missile) - 2 Saniye Sonra Aktif
+    if (bulletType == 3) {
+      _homingTimer += dt;
+      if (_homingTimer > 2.0) {
+        PositionComponent? target;
+        double minDist = double.infinity;
+        
+        // Arenadaki en yakın tankı bul (Kendin de dahil)
+        if (!gameRef.playerTank.isDead) {
+          double d = position.distanceTo(gameRef.playerTank.position);
+          if (d < minDist) { minDist = d; target = gameRef.playerTank; }
+        }
+        for (var e in gameRef.enemies.values) {
+          if (!e.isDead) {
+            double d = position.distanceTo(e.position);
+            if (d < minDist) { minDist = d; target = e; }
+          }
+        }
+        
+        // Profesyonel Takip: Hedefe kilitlen ve ivmelenerek dön
+        if (target != null) {
+          Vector2 desiredVelocity = (target.position - position).normalized() * speed;
+          
+          // Havada kaldıkça dönüş yeteneği (turnRate) keskinleşir, kaçmayı imkansızlaştırır
+          double turnRate = 2.0 + ((_homingTimer - 2.0) * 1.5); 
+          
+          velocity.lerp(desiredVelocity, dt * turnRate); 
+          angle = atan2(velocity.y, velocity.x) + pi/2;
+        }
+      }
     }
   }
 
@@ -64,7 +109,10 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
     super.onCollision(intersectionPoints, other);
     
     if (other is Wall) {
-      if (_bounceCount >= _maxBounces) {
+      if (bulletType == 4) return; // LAZER DUVARIN İÇİNDEN GEÇER
+
+      // Normal mermiler 3 sekmede yok olur. Roket (3) bir tanka çarpana kadar sonsuz seker.
+      if (bulletType != 3 && _bounceCount >= _maxBounces) {
         removeFromParent();
         return;
       }
@@ -96,10 +144,11 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
       if (_hasHitTank) return;
 
       if (ownerId == other.networkService.myId) {
-        if (gameRef.networkService.selectedMap == 3 && (_bounceCount > 0 || _lifeTime > 0.2)) {
+        // Dost Ateşi Kontrolü
+        if (gameRef.networkService.selectedMap == 3 && (_bounceCount > 0 || _lifeTime > 0.2 || bulletType == 3)) {
           _hasHitTank = true;
           other.takeDamage(ownerId);
-          removeFromParent();
+          removeFromParent(); 
         }
       } else {
         _hasHitTank = true;

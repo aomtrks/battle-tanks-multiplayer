@@ -192,11 +192,14 @@ class _MainMenuState extends State<MainMenu> {
                   DropdownMenuItem(value: 3, child: Text("3 El")),
                   DropdownMenuItem(value: 5, child: Text("5 El")),
                   DropdownMenuItem(value: 10, child: Text("10 El")),
+                  DropdownMenuItem(value: 15, child: Text("15 El")),
+                  DropdownMenuItem(value: 30, child: Text("30 El")),
                 ]
                 : const [
                   DropdownMenuItem(value: 60, child: Text("1 Dakika")),
                   DropdownMenuItem(value: 120, child: Text("2 Dakika")),
                   DropdownMenuItem(value: 300, child: Text("5 Dakika")),
+                  DropdownMenuItem(value: 600, child: Text("10 Dakika")),
                 ],
                 onChanged: (val) {
                   _networkService.updateLobbySettings(_networkService.selectedMap, val ?? 60);

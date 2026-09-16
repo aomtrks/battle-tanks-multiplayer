@@ -20,14 +20,15 @@ class NetworkService {
   Function(List<Map<String, dynamic>> players)? onLobbyUpdated;
   Function()? onGameStarted;
   Function(String playerId, double x, double y, double angle)? onPlayerMove;
-  Function(String playerId, double x, double y, double angle)? onPlayerShoot;
+  
+  // YENİ: Mermi tipi eklendi (0: Normal, 3: Roket, 4: Lazer)
+  Function(String playerId, double x, double y, double angle, int type)? onPlayerShoot;
+  
   Function(String playerId, int health)? onHealthUpdate;
   Function(String playerId, double x, double y, double angle)? onPlayerRespawn;
   Function(String id, int type, double x, double y)? onLootSpawned;
   Function(String id)? onLootCollected;
   Function(String playerId, bool state)? onShieldUpdate;
-  
-  // YENİ: Arena modu el tetikleyicisi (Tohum ve Labirent Boyutları)
   Function(int seed, int rows, int cols, int currentRound)? onNewRound; 
 
   Future<String> startHosting(String name) async {
@@ -125,7 +126,8 @@ class NetworkService {
           } else if (data['action'] == 'move' && onPlayerMove != null) {
             onPlayerMove!(senderId, (data['x'] as num).toDouble(), (data['y'] as num).toDouble(), (data['a'] as num).toDouble());
           } else if (data['action'] == 'shoot' && onPlayerShoot != null) {
-            onPlayerShoot!(senderId, (data['x'] as num).toDouble(), (data['y'] as num).toDouble(), (data['a'] as num).toDouble());
+            // YENİ: Mermi tipi ağdan okunur
+            onPlayerShoot!(senderId, (data['x'] as num).toDouble(), (data['y'] as num).toDouble(), (data['a'] as num).toDouble(), data['t'] ?? 0);
           } else if (data['action'] == 'health' && onHealthUpdate != null) {
             onHealthUpdate!(senderId, data['h']);
           } else if (data['action'] == 'respawn' && onPlayerRespawn != null) {
@@ -146,7 +148,7 @@ class NetworkService {
 
   void _processKill(String killerId) {
     if (!isHost) return;
-    if (selectedMap == 3) return; // Arena modunda ölümleri host oyun döngüsünden denetler
+    if (selectedMap == 3) return; 
     for (var p in lobbyPlayers) {
       if (p['id'] == killerId) p['score'] = (p['score'] ?? 0) + 1;
     }
@@ -174,7 +176,10 @@ class NetworkService {
   }
 
   void sendPosition(double x, double y, double angle) => _routeMessage({'action': 'move', 'id': myId, 'x': x, 'y': y, 'a': angle});
-  void sendShoot(double x, double y, double angle) => _routeMessage({'action': 'shoot', 'id': myId, 'x': x, 'y': y, 'a': angle});
+  
+  // YENİ: Mermi tipini ağa gönder
+  void sendShoot(double x, double y, double angle, int type) => _routeMessage({'action': 'shoot', 'id': myId, 'x': x, 'y': y, 'a': angle, 't': type});
+  
   void sendHealth(int health) => _routeMessage({'action': 'health', 'id': myId, 'h': health});
   void sendRespawn(double x, double y, double angle) => _routeMessage({'action': 'respawn', 'id': myId, 'x': x, 'y': y, 'a': angle, 'h': 5});
   void sendDied(String killerId) {

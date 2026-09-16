@@ -16,8 +16,10 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   bool isDead = false;
   int ammo = -1;
   
-  bool isShielded = true; // YENİ: Başlangıçta Tüm Modlarda Kalkanla Doğ
-  double shieldTimer = 5.0; // Kalkan Süresi (dışarıdan da erişilebilir)
+  int nextShotType = 0; // YENİ: 0(Normal), 3(Roket), 4(Lazer)
+
+  bool isShielded = true; 
+  double shieldTimer = 5.0; 
 
   late Vector2 _previousPosition;
   final Vector2 spawnPosition;
@@ -70,7 +72,7 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   @override
   Future<void> onLoad() async {
     add(RectangleHitbox());
-    networkService.sendShield(true); // YENİ: Doğduğunda kalkanını diğerlerine bildir
+    networkService.sendShield(true); 
   }
   
   void activateShield() {
@@ -97,8 +99,9 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
 
     Future.delayed(const Duration(milliseconds: 1500), () {
       health = maxHealth;
-      isShielded = true; // YENİ: Tekrar doğduğunda yine kalkanla başla
+      isShielded = true; 
       shieldTimer = 5.0;
+      nextShotType = 0;
       networkService.sendShield(true);
       
       if (networkService.selectedMap == 1) ammo = 10;
@@ -171,7 +174,13 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(-14, -16, 6, 32), const Radius.circular(2)), trackPaint);
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(8, -16, 6, 32), const Radius.circular(2)), trackPaint);
     canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(-9, -12, 18, 24), const Radius.circular(4)), bodyPaint);
-    canvas.drawLine(Offset.zero, const Offset(0, -25), barrelPaint);
+    
+    // Namlu Rengi: Özel mermi yüklenmişse oyuncuyu uyarır
+    Paint activeBarrel = barrelPaint;
+    if (nextShotType == 3) activeBarrel = Paint()..color = Colors.purpleAccent..strokeWidth = 4;
+    else if (nextShotType == 4) activeBarrel = Paint()..color = Colors.cyanAccent..strokeWidth = 4;
+    
+    canvas.drawLine(Offset.zero, const Offset(0, -25), activeBarrel);
     canvas.drawCircle(Offset.zero, 7, turretPaint);
     
     if (isShielded) {
