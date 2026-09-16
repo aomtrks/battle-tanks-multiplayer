@@ -153,6 +153,7 @@ class _MainMenuState extends State<MainMenu> {
     String getMapName(int id) {
       if (id == 1) return "Çöl";
       if (id == 2) return "Buzul";
+      if (id == 3) return "Arena (Hayatta Kalma)";
       return "Klasik";
     }
 
@@ -174,16 +175,25 @@ class _MainMenuState extends State<MainMenu> {
                 items: const [
                   DropdownMenuItem(value: 0, child: Text("Klasik Harita")),
                   DropdownMenuItem(value: 1, child: Text("Çöl Haritası")),
-                  DropdownMenuItem(value: 2, child: Text("Buzul Haritası")), // YENİ
+                  DropdownMenuItem(value: 2, child: Text("Buzul Haritası")),
+                  DropdownMenuItem(value: 3, child: Text("Arena Haritası")), // YENİ MOD
                 ],
                 onChanged: (val) {
-                  _networkService.updateLobbySettings(val ?? 0, _networkService.selectedTime);
+                  int newMap = val ?? 0;
+                  int newTime = newMap == 3 ? 3 : 60; // Arena moduna geçilirse default 3 el olsun
+                  _networkService.updateLobbySettings(newMap, newTime);
                   setState((){});
                 }
               ),
               DropdownButton<int>(
                 value: _networkService.selectedTime,
-                items: const [
+                items: _networkService.selectedMap == 3 
+                ? const [
+                  DropdownMenuItem(value: 3, child: Text("3 El")),
+                  DropdownMenuItem(value: 5, child: Text("5 El")),
+                  DropdownMenuItem(value: 10, child: Text("10 El")),
+                ]
+                : const [
                   DropdownMenuItem(value: 60, child: Text("1 Dakika")),
                   DropdownMenuItem(value: 120, child: Text("2 Dakika")),
                   DropdownMenuItem(value: 300, child: Text("5 Dakika")),
@@ -201,7 +211,7 @@ class _MainMenuState extends State<MainMenu> {
             child: Text(
               "Kurucu IP: ${_networkService.hostIp}\n"
               "Harita: ${getMapName(_networkService.selectedMap)} | "
-              "Süre: ${_networkService.selectedTime ~/ 60} Dk", 
+              "${_networkService.selectedMap == 3 ? 'Hedef: ${_networkService.selectedTime} El' : 'Süre: ${_networkService.selectedTime ~/ 60} Dk'}", 
               textAlign: TextAlign.center, 
               style: const TextStyle(color: Colors.red, fontSize: 16, fontWeight: FontWeight.bold)
             ),

@@ -2,30 +2,38 @@ import 'dart:math';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
+import '../game/tank_game.dart';
 import 'tank.dart';
 import 'wall.dart';
 
-class Bullet extends PositionComponent with CollisionCallbacks {
+class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankGame> {
   final double speed = 400.0;
   late Vector2 velocity;
   final bool isEnemy;
   final String ownerId;
+  final bool isArena; // YENİ: Arena modu tetikleyicisi
 
   late final Paint _bulletPaint;
-  bool _hasHitTank = false; // Tanklara tek vuruş kontrolü
+  bool _hasHitTank = false; 
   
-  // YENİ: Sekme (Bounce) Mantığı
   int _bounceCount = 0;
-  static const int _maxBounces = 3; // Duvarlardan 3 kere seker, 4.de yok olur
+  static const int _maxBounces = 3; 
+  double _lifeTime = 0.0;
 
-  Bullet({required Vector2 position, required double angle, required this.ownerId, this.isEnemy = false})
-      : super(position: position, size: Vector2(8, 8), anchor: Anchor.center) {
+  Bullet({required Vector2 position, required double angle, required this.ownerId, this.isEnemy = false, this.isArena = false})
+      // Arena modunda mermi boyutu 8'den 12'ye çıkarıldı ve daha belirgin yapıldı
+      : super(position: position, size: isArena ? Vector2(12, 12) : Vector2(8, 8), anchor: Anchor.center) {
     this.angle = angle;
     velocity = Vector2(sin(angle), -cos(angle)) * speed; 
 
-    _bulletPaint = Paint()
-      ..color = isEnemy ? Colors.orange : Colors.yellow
-      ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 2);
+    if (isArena) {
+      // YENİ: Arena haritasında tamamen siyah ve blursuz net mermi
+      _bulletPaint = Paint()..color = Colors.black;
+    } else {
+      _bulletPaint = Paint()
+        ..color = isEnemy ? Colors.orange : Colors.yellow
+        ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 2);
+    }
   }
 
   @override
@@ -37,6 +45,13 @@ class Bullet extends PositionComponent with CollisionCallbacks {
   void update(double dt) {
     super.update(dt);
     position += velocity * dt;
+    _lifeTime += dt;
+
+    double maxLife = (gameRef.networkService.selectedMap == 3) ? 10.0 : 3.5;
+    
+    if (_lifeTime >= maxLife) {
+      removeFromParent();
+    }
   }
 
   @override
@@ -55,11 +70,8 @@ class Bullet extends PositionComponent with CollisionCallbacks {
       }
       
       _bounceCount++;
-      
-      // Mermiyi duvarın içinden bir miktar geri çıkart (Yapışmayı/Glitch'i önler)
       position -= velocity.normalized() * 5.0; 
 
-      // Çarpışma yönünü tespit edip vektörü ters çevirme (AABB Kutu Çarpışması)
       Rect bulletRect = Rect.fromCenter(center: position.toOffset(), width: size.x, height: size.y);
       Rect wallRect = other.toRect();
       
@@ -70,24 +82,30 @@ class Bullet extends PositionComponent with CollisionCallbacks {
       
       double minDist = [leftDist, rightDist, topDist, bottomDist].reduce(min);
       
-      // X veya Y ekseninde sekme (Ricochet)
       if (minDist == leftDist || minDist == rightDist) {
         velocity.x = -velocity.x; 
       } else {
         velocity.y = -velocity.y; 
       }
       
-      // Merminin görsel dönüş açısını yeni hıza göre ayarla
       angle = atan2(velocity.y, velocity.x) + pi/2;
       return; 
     }
 
-    // Tank Vurulması
-    if (other is Tank && ownerId != other.networkService.myId) {
+    if (other is Tank) {
       if (_hasHitTank) return;
-      _hasHitTank = true;
-      other.takeDamage(ownerId);
-      removeFromParent();
+
+      if (ownerId == other.networkService.myId) {
+        if (gameRef.networkService.selectedMap == 3 && (_bounceCount > 0 || _lifeTime > 0.2)) {
+          _hasHitTank = true;
+          other.takeDamage(ownerId);
+          removeFromParent();
+        }
+      } else {
+        _hasHitTank = true;
+        other.takeDamage(ownerId);
+        removeFromParent();
+      }
     }
   }
 }

@@ -12,12 +12,12 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   final String playerName;
 
   int health = 5;
-  final int maxHealth = 5;
+  late int maxHealth;
   bool isDead = false;
   int ammo = -1;
   
-  bool isShielded = false; // KALKAN DURUMU
-  double _shieldTimer = 0.0;
+  bool isShielded = true; // YENİ: Başlangıçta Tüm Modlarda Kalkanla Doğ
+  double shieldTimer = 5.0; // Kalkan Süresi (dışarıdan da erişilebilir)
 
   late Vector2 _previousPosition;
   final Vector2 spawnPosition;
@@ -45,9 +45,16 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
       : super(position: spawnPosition, size: Vector2(28, 32), anchor: Anchor.center) {
     _previousPosition = position.clone();
 
+    if (networkService.selectedMap == 3) {
+      maxHealth = 1;
+      health = 1;
+    } else {
+      maxHealth = 5;
+      health = 5;
+    }
+
     if (networkService.selectedMap == 1) ammo = 10; 
 
-    // Her arka planda rahat okunması için SİYAH GÖLGELİ BEYAZ YAZI kullanıyoruz
     const textStyle = TextStyle(
       color: Colors.white, 
       fontSize: 12, 
@@ -63,16 +70,17 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   @override
   Future<void> onLoad() async {
     add(RectangleHitbox());
+    networkService.sendShield(true); // YENİ: Doğduğunda kalkanını diğerlerine bildir
   }
   
   void activateShield() {
     isShielded = true;
-    _shieldTimer = 5.0; // 5 Saniye yenilmezlik
+    shieldTimer = 5.0; 
     networkService.sendShield(true);
   }
 
   void takeDamage(String killerId) {
-    if (isDead || isShielded) return; // Kalkan varsa hasar işlemez!
+    if (isDead || isShielded) return; 
     health--;
     networkService.sendHealth(health);
     if (health <= 0) dieAndRespawn(killerId);
@@ -81,14 +89,17 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   void dieAndRespawn(String killerId) {
     if (isDead) return;
     isDead = true;
-
     networkService.sendDied(killerId);
+
+    if (networkService.selectedMap == 3) return;
+
     gameRef.showScoreboard();
 
     Future.delayed(const Duration(milliseconds: 1500), () {
       health = maxHealth;
-      isShielded = false;
-      networkService.sendShield(false);
+      isShielded = true; // YENİ: Tekrar doğduğunda yine kalkanla başla
+      shieldTimer = 5.0;
+      networkService.sendShield(true);
       
       if (networkService.selectedMap == 1) ammo = 10;
       position = spawnPosition.clone();
@@ -108,10 +119,9 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     _previousPosition = position.clone();
     super.update(dt);
     
-    // Kalkan süresi hesaplama
     if (isShielded) {
-      _shieldTimer -= dt;
-      if (_shieldTimer <= 0) {
+      shieldTimer -= dt;
+      if (shieldTimer <= 0) {
         isShielded = false;
         networkService.sendShield(false);
       }
@@ -136,7 +146,6 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
       }
     }
 
-    // FPS Bug'ının Çözümü: Yüksek FPS'de joystick ittirildiği sürece hızın 0'a resetlenmesini önlüyoruz.
     if (_currentVelocity.length > 2.0) { 
       angle = atan2(_currentVelocity.y, _currentVelocity.x) + pi / 2;
       position.add(_currentVelocity * dt);
@@ -147,7 +156,6 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
         _timeSinceLastSync = 0;
       }
     } else if (!isMoving && _currentVelocity.length > 0) {
-      // Sadece joystick'ten elini tamamen çektiğinde ve durma noktasına geldiğinde 0'a daya.
       _currentVelocity = Vector2.zero();
       networkService.sendPosition(position.x, position.y, angle);
     }
@@ -166,7 +174,6 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     canvas.drawLine(Offset.zero, const Offset(0, -25), barrelPaint);
     canvas.drawCircle(Offset.zero, 7, turretPaint);
     
-    // Kalkan Aktifse Dış Çember Çiz
     if (isShielded) {
       canvas.drawCircle(Offset.zero, 25, shieldPaint);
       canvas.drawCircle(Offset.zero, 25, shieldBorderPaint);
@@ -177,10 +184,9 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     final barWidth = size.x;
     final barHeight = 5.0;
     
-    // YENİ UI DİZİLİMİ: İsim Üstte, Can Barı Altta
-    nameTextPaint.render(canvas, playerName, Vector2(-nameWidth / 2, -42)); // Daha yukarıda
+    nameTextPaint.render(canvas, playerName, Vector2(-nameWidth / 2, -42)); 
     
-    final barOffset = Vector2(-size.x / 2, -size.y / 2 - 10); // Daha aşağıda
+    final barOffset = Vector2(-size.x / 2, -size.y / 2 - 10); 
     canvas.drawRect(Rect.fromLTWH(barOffset.x, barOffset.y, barWidth, barHeight), hpBasePaint);
     canvas.drawRect(Rect.fromLTWH(barOffset.x, barOffset.y, barWidth * (health / maxHealth), barHeight), hpCurrentPaint);
 

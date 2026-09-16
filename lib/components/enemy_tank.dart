@@ -2,14 +2,15 @@ import 'dart:math';
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
+import '../game/tank_game.dart';
 
-class EnemyTank extends PositionComponent with CollisionCallbacks {
+class EnemyTank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGame> {
   final String playerName;
   int health = 5;
-  final int maxHealth = 5;
+  late int maxHealth;
   bool isDead = false;
   
-  bool isShielded = false; // DÜŞMAN KALKAN DURUMU
+  bool isShielded = true; // YENİ: Düşmanlar da varsayılan olarak kalkanla doğduğu varsayılır
 
   late final TextPaint nameTextPaint;
   late final double nameWidth;
@@ -44,6 +45,8 @@ class EnemyTank extends PositionComponent with CollisionCallbacks {
   @override
   Future<void> onLoad() async {
     add(RectangleHitbox());
+    maxHealth = gameRef.networkService.selectedMap == 3 ? 1 : 5;
+    health = maxHealth;
   }
 
   void updateHealth(int newHealth) {
@@ -58,7 +61,7 @@ class EnemyTank extends PositionComponent with CollisionCallbacks {
   void respawn(double newX, double newY, double newAngle) {
     health = maxHealth;
     isDead = false;
-    isShielded = false;
+    isShielded = true; // YENİ: Düşman respawn olduğunda da kalkanlı olduğunu biliyoruz
     position = Vector2(newX, newY);
     targetPosition = position.clone();
     angle = newAngle;
@@ -113,7 +116,6 @@ class EnemyTank extends PositionComponent with CollisionCallbacks {
     final barWidth = size.x;
     final barHeight = 5.0;
     
-    // UI Çakışması Giderildi
     nameTextPaint.render(canvas, playerName, Vector2(-nameWidth / 2, -42));
     
     final barOffset = Vector2(-size.x / 2, -size.y / 2 - 10);

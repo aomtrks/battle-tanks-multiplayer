@@ -25,18 +25,18 @@ class NetworkService {
   Function(String playerId, double x, double y, double angle)? onPlayerRespawn;
   Function(String id, int type, double x, double y)? onLootSpawned;
   Function(String id)? onLootCollected;
-  Function(String playerId, bool state)? onShieldUpdate; // YENİ: Kalkan Senkronizasyonu
+  Function(String playerId, bool state)? onShieldUpdate;
+  
+  // YENİ: Arena modu el tetikleyicisi (Tohum ve Labirent Boyutları)
+  Function(int seed, int rows, int cols, int currentRound)? onNewRound; 
 
   Future<String> startHosting(String name) async {
     isHost = true;
     myName = name;
-    
     _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, port, reuseAddress: true, reusePort: true);
     _socket!.readEventsEnabled = true;
     _listen();
-
     lobbyPlayers = [{'id': myId, 'name': myName, 'spawnIndex': 0, 'score': 0}];
-
     final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
     for (var interface in interfaces) {
       for (var addr in interface.addresses) {
@@ -50,11 +50,9 @@ class NetworkService {
     isHost = false;
     hostIp = targetIp;
     myName = name;
-
     _socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0, reuseAddress: true, reusePort: true);
     _socket!.readEventsEnabled = true;
     _listen();
-
     _sendToHost({'action': 'join_lobby', 'id': myId, 'name': myName});
   }
 
@@ -90,11 +88,9 @@ class NetworkService {
       if (event == RawSocketEvent.read) {
         Datagram? datagram = _socket?.receive();
         if (datagram == null) return;
-
         try {
           String message = utf8.decode(datagram.data);
           Map<String, dynamic> data = jsonDecode(message);
-
           String senderId = data['id'] ?? '';
           if (senderId == myId) return;
 
@@ -124,6 +120,8 @@ class NetworkService {
             }
           } else if (data['action'] == 'start_game') {
             if (onGameStarted != null) onGameStarted!();
+          } else if (data['action'] == 'new_round' && onNewRound != null) {
+            onNewRound!(data['seed'], data['rows'], data['cols'], data['round']);
           } else if (data['action'] == 'move' && onPlayerMove != null) {
             onPlayerMove!(senderId, (data['x'] as num).toDouble(), (data['y'] as num).toDouble(), (data['a'] as num).toDouble());
           } else if (data['action'] == 'shoot' && onPlayerShoot != null) {
@@ -137,7 +135,7 @@ class NetworkService {
           } else if (data['action'] == 'collect_loot' && onLootCollected != null) {
             onLootCollected!(data['lootId']);
           } else if (data['action'] == 'shield' && onShieldUpdate != null) {
-            onShieldUpdate!(senderId, data['state']); // Kalkan dinleyici
+            onShieldUpdate!(senderId, data['state']); 
           }
         } catch (e) {
           print("UDP Hata: $e");
@@ -148,8 +146,17 @@ class NetworkService {
 
   void _processKill(String killerId) {
     if (!isHost) return;
+    if (selectedMap == 3) return; // Arena modunda ölümleri host oyun döngüsünden denetler
     for (var p in lobbyPlayers) {
       if (p['id'] == killerId) p['score'] = (p['score'] ?? 0) + 1;
+    }
+    _broadcastLobby();
+  }
+
+  void addScoreToPlayer(String playerId) {
+    if (!isHost) return;
+    for (var p in lobbyPlayers) {
+      if (p['id'] == playerId) p['score'] = (p['score'] ?? 0) + 1;
     }
     _broadcastLobby();
   }
@@ -176,17 +183,19 @@ class NetworkService {
   }
   void sendSpawnLoot(String lootId, int type, double x, double y) => _routeMessage({'action': 'spawn_loot', 'id': myId, 'lootId': lootId, 'type': type, 'x': x, 'y': y});
   void sendCollectLoot(String lootId) => _routeMessage({'action': 'collect_loot', 'id': myId, 'lootId': lootId});
-  void sendShield(bool state) => _routeMessage({'action': 'shield', 'id': myId, 'state': state}); // YENİ
+  void sendShield(bool state) => _routeMessage({'action': 'shield', 'id': myId, 'state': state}); 
+  
+  void sendNewRound(int seed, int rows, int cols, int currentRound) {
+    _routeMessage({'action': 'new_round', 'id': myId, 'seed': seed, 'rows': rows, 'cols': cols, 'round': currentRound});
+  }
 
   void _routeMessage(Map<String, dynamic> msg) {
     List<int> bytes = utf8.encode(jsonEncode(msg));
     if (isHost) _broadcast(bytes); else if (hostIp != null) _sendToHost(msg);
   }
-
   void _sendToHost(Map<String, dynamic> msg) {
     if (_socket != null && hostIp != null) _socket!.send(utf8.encode(jsonEncode(msg)), InternetAddress(hostIp!), port);
   }
-
   void _broadcast(List<int> bytes, {String? excludeKey}) {
     if (_socket == null) return;
     _clients.forEach((key, clientInfo) {
