@@ -47,7 +47,7 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     _previousPosition = position.clone();
     team = networkService.myTeam;
     
-    bodyPaint = Paint()..color = Colors.green.shade600; // Kendi tankın her zaman YEŞİL
+    bodyPaint = Paint()..color = Colors.green.shade600; 
 
     if (networkService.selectedMap == 3) { maxHealth = 1; health = 1; } 
     else { maxHealth = 5; health = 5; }
@@ -64,6 +64,15 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   Future<void> onLoad() async {
     add(RectangleHitbox());
     networkService.sendShield(true); 
+  }
+  
+  // YENİ: Gol sonrası veya özel durumlarda tankı güvenle ve anında ışınlar
+  void teleportToSpawn(Vector2 newSpawn) {
+    spawnPosition = newSpawn;
+    position = spawnPosition.clone();
+    _previousPosition = spawnPosition.clone();
+    _currentVelocity = Vector2.zero();
+    networkService.sendPosition(position.x, position.y, angle);
   }
   
   void activateShield() {
@@ -102,7 +111,6 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
       
       if (networkService.selectedMap == 1) ammo = 10;
       
-      // YENİ: Doğarken kendi takımının bölgesine spawn olur
       spawnPosition = gameRef.getSpawnPoint(networkService.mySpawnIndex, teamId: networkService.myTeam);
       position = spawnPosition.clone();
       _previousPosition = spawnPosition.clone();

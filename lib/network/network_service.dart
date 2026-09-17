@@ -20,13 +20,12 @@ class NetworkService {
   final String myId = DateTime.now().millisecondsSinceEpoch.toString();
   String myName = "Oyuncu";
   int mySpawnIndex = 0;
-  int myTeam = 0; // YENİ: Takımım
+  int myTeam = 0; 
 
   List<Map<String, dynamic>> lobbyPlayers = [];
   final Map<String, _ClientInfo> _clients = {};
   List<int> spawnPool = [0, 1, 2, 3, 4, 5, 6, 7];
   
-  // YENİ: Takım Skorları
   int teamScoreA = 0;
   int teamScoreB = 0;
 
@@ -41,7 +40,6 @@ class NetworkService {
   Function(String playerId, bool state)? onShieldUpdate;
   Function(int seed, int rows, int cols, int currentRound)? onNewRound; 
   
-  // YENİ: Futbol Topu Dinleyicileri
   Function(String ownerId)? onCatchBall;
   Function(String ownerId, double x, double y, double angle)? onShootBall;
   Function(int scoringTeam)? onGoalScored;
@@ -82,7 +80,6 @@ class NetworkService {
     _broadcastLobby();
   }
 
-  // YENİ: Host takımları düzenler
   void toggleTeam(String playerId) {
     if (!isHost) return;
     for (var p in lobbyPlayers) {
@@ -128,19 +125,16 @@ class NetworkService {
             if (data['action'] == 'join_lobby') {
               if (!_clients.containsKey(clientKey)) _clients[clientKey] = _ClientInfo(datagram.address, datagram.port);
               int newSpawnIndex = spawnPool[lobbyPlayers.length % 8];
-              int autoTeam = lobbyPlayers.length % 2 == 0 ? 0 : 1; // Otomatik takım dağıtımı
+              int autoTeam = lobbyPlayers.length % 2 == 0 ? 0 : 1; 
               lobbyPlayers.add({'id': senderId, 'name': data['name'], 'spawnIndex': newSpawnIndex, 'score': 0, 'team': autoTeam});
               _broadcastLobby();
             }
 
             if (data['action'] == 'died') _processKill(data['killerId']);
-            
-            // Futbol Host Otoritesi
             if (data['action'] == 'goal') {
                teamScoreA = data['scoreA'];
                teamScoreB = data['scoreB'];
             }
-
             if (data['action'] != 'join_lobby') _broadcast(datagram.data, excludeKey: clientKey);
           }
 
@@ -178,11 +172,13 @@ class NetworkService {
             onLootCollected!(data['lootId']);
           } else if (data['action'] == 'shield' && onShieldUpdate != null) {
             onShieldUpdate!(senderId, data['state']); 
-          } else if (data['action'] == 'catch_ball' && onCatchBall != null) { // YENİ
+          } else if (data['action'] == 'catch_ball' && onCatchBall != null) { 
             onCatchBall!(senderId);
-          } else if (data['action'] == 'shoot_ball' && onShootBall != null) { // YENİ
+          } else if (data['action'] == 'shoot_ball' && onShootBall != null) { 
             onShootBall!(senderId, (data['x'] as num).toDouble(), (data['y'] as num).toDouble(), (data['a'] as num).toDouble());
-          } else if (data['action'] == 'goal' && onGoalScored != null) { // YENİ
+          } else if (data['action'] == 'goal' && onGoalScored != null) {
+            teamScoreA = data['scoreA'] ?? teamScoreA;
+            teamScoreB = data['scoreB'] ?? teamScoreB;
             onGoalScored!(data['team']);
           }
         } catch (e) {
@@ -194,7 +190,7 @@ class NetworkService {
 
   void _processKill(String killerId) {
     if (!isHost) return;
-    if (selectedMap == 3 || selectedMap == 4) return; // Arena ve Futbolda skor ayrı hesaplanır
+    if (selectedMap == 3 || selectedMap == 4 || selectedMap == 5) return; 
     for (var p in lobbyPlayers) {
       if (p['id'] == killerId) p['score'] = (p['score'] ?? 0) + 1;
     }
@@ -234,9 +230,14 @@ class NetworkService {
   void sendSpawnLoot(String lootId, int type, double x, double y) => _routeMessage({'action': 'spawn_loot', 'id': myId, 'lootId': lootId, 'type': type, 'x': x, 'y': y});
   void sendCollectLoot(String lootId) => _routeMessage({'action': 'collect_loot', 'id': myId, 'lootId': lootId});
   void sendShield(bool state) => _routeMessage({'action': 'shield', 'id': myId, 'state': state}); 
-  void sendNewRound(int seed, int rows, int cols, int currentRound) => _routeMessage({'action': 'new_round', 'id': myId, 'seed': seed, 'rows': rows, 'cols': cols, 'round': currentRound});
   
-  // YENİ: Top Aksiyonları
+  // YENİ: Paket kaybına karşı 3 kez yollar (Yükleme hatası engellenir)
+  void sendNewRound(int seed, int rows, int cols, int currentRound) {
+    for (int i = 0; i < 3; i++) {
+      _routeMessage({'action': 'new_round', 'id': myId, 'seed': seed, 'rows': rows, 'cols': cols, 'round': currentRound});
+    }
+  }
+  
   void sendCatchBall() => _routeMessage({'action': 'catch_ball', 'id': myId});
   void sendShootBall(double x, double y, double angle) => _routeMessage({'action': 'shoot_ball', 'id': myId, 'x': x, 'y': y, 'a': angle});
   void sendGoal(int team) {

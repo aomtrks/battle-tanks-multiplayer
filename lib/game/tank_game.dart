@@ -122,8 +122,8 @@ class PaintGround extends PositionComponent {
   @override
   void render(Canvas canvas) {
     final paintWhite = Paint()..color = Colors.white;
-    final paintBlue = Paint()..color = Colors.blue.withOpacity(0.6); // Takım A
-    final paintRed = Paint()..color = Colors.red.withOpacity(0.6); // Takım B
+    final paintBlue = Paint()..color = Colors.blue.withOpacity(0.6); 
+    final paintRed = Paint()..color = Colors.red.withOpacity(0.6); 
     final paintBorder = Paint()..color = Colors.grey.shade300..style = PaintingStyle.stroke..strokeWidth = 1;
 
     for (int y = 0; y < rows; y++) {
@@ -186,15 +186,13 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     return Colors.blueGrey.shade900;
   }
 
-  // YENİ: Takım doğma algoritması tamamen teamId odaklı yapıldı. Engellerin içi temizlendi.
   Vector2 getSpawnPoint(int index, {int? seed, int? teamId}) {
-    int targetTeam = teamId ?? networkService.myTeam; // Hangi takımdaysa oraya at
+    int targetTeam = teamId ?? networkService.myTeam; 
 
     if (networkService.selectedMap == 4 || networkService.selectedMap == 5) {
       Random rng = Random();
-      // Duvar (150) dışında güvenli bölge: X: 80 veya X: 1320
-      if (targetTeam == 0) return Vector2(80, 300 + rng.nextDouble() * 200); // Takım A (Sol)
-      return Vector2(1320, 300 + rng.nextDouble() * 200); // Takım B (Sağ)
+      if (targetTeam == 0) return Vector2(80, 300 + rng.nextDouble() * 200); 
+      return Vector2(1320, 300 + rng.nextDouble() * 200); 
     }
 
     if (networkService.selectedMap == 3) {
@@ -229,6 +227,8 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       ball!.velocity = Vector2.zero();
       ball!.position = Vector2(700, 400); 
     }
+    Vector2 mySpawn = getSpawnPoint(networkService.mySpawnIndex, seed: currentArenaSeed, teamId: networkService.myTeam);
+    playerTank.teleportToSpawn(mySpawn);
   }
 
   @override
@@ -251,7 +251,6 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
         for (var p in networkService.lobbyPlayers) {
           if (p['id'] == playerId) { enemySpawnIndex = p['spawnIndex']; enemyName = p['name']; enemyTeam = p['team'] ?? 0; }
         }
-        // Düşmanı yaratırken onun takımını belirterek yaratıyoruz, böylece doğru yerde doğar.
         final newEnemy = EnemyTank(playerName: enemyName, position: getSpawnPoint(enemySpawnIndex, seed: currentArenaSeed, teamId: enemyTeam), team: enemyTeam);
         enemies[playerId] = newEnemy;
         world.add(newEnemy);
@@ -281,6 +280,8 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     };
 
     networkService.onNewRound = (seed, rows, cols, round) {
+      if (currentArenaSeed == seed && currentRound == round) return; // YENİ: Çift oluşturmayı engelle
+      
       currentArenaSeed = seed; currentRound = round; _roundEndingTriggered = false; _gracePeriod = 2.5; 
       for (var w in currentWalls) w.removeFromParent(); currentWalls.clear();
       for (var l in loots.values) l.removeFromParent(); loots.clear();
@@ -308,13 +309,16 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     final knobPaint = BasicPalette.blue.withAlpha(200).paint();
     final backgroundPaint = BasicPalette.blue.withAlpha(100).paint();
 
+    // YENİ: Büyütülmüş Joystick (Yarıçap 30 ve 70)
     joystick = JoystickComponent(
-      knob: CircleComponent(radius: 20, paint: knobPaint),
-      background: CircleComponent(radius: 50, paint: backgroundPaint),
+      knob: CircleComponent(radius: 30, paint: knobPaint),
+      background: CircleComponent(radius: 70, paint: backgroundPaint),
       margin: EdgeInsets.only(left: GameSettings.joyLeft, bottom: GameSettings.joyBottom),
     );
 
     fireButton = CircleComponent(radius: 40, paint: Paint()..color = Colors.red.withAlpha(150));
+    
+    // YENİ: Mermi yazısı ön hazırlığı (Pozisyon update içinde sağ üste sabitlenecek)
     ammoText = TextComponent(text: '', textRenderer: TextPaint(style: TextStyle(color: networkService.selectedMap == 2 ? Colors.black : Colors.white, fontSize: 22, fontWeight: FontWeight.bold, shadows: const [Shadow(blurRadius: 3.0, color: Colors.black, offset: Offset(1.0, 1.0))])));
     
     Color timerColor = (networkService.selectedMap == 2 || networkService.selectedMap >= 4) ? Colors.black : Colors.white;
@@ -328,11 +332,14 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
     if (networkService.selectedMap == 3) {
       if (networkService.isHost) {
-        currentArenaSeed = DateTime.now().millisecondsSinceEpoch;
-        Random rng = Random(currentArenaSeed!);
-        int rows = 5 + rng.nextInt(3); int cols = 7 + rng.nextInt(4);
-        networkService.sendNewRound(currentArenaSeed!, rows, cols, 1);
-        _buildArenaMaze(currentArenaSeed!, rows, cols); 
+        // YENİ: Paketlerin istemcilere zamanında varması için host ilk maze'i 1.5 sn geciktiriyor
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          currentArenaSeed = DateTime.now().millisecondsSinceEpoch;
+          Random rng = Random(currentArenaSeed!);
+          int rows = 5 + rng.nextInt(3); int cols = 7 + rng.nextInt(4);
+          networkService.sendNewRound(currentArenaSeed!, rows, cols, 1);
+          _buildArenaMaze(currentArenaSeed!, rows, cols); 
+        });
       }
     } else if (networkService.selectedMap == 4) {
       _createFootballField(); 
@@ -418,7 +425,9 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     exitRect = Rect.fromLTWH(size.x / 2 + 10, size.y / 2 + 100, 170, 50);
     
     fireButton.position = Vector2(size.x - GameSettings.fireRight - 80, size.y - GameSettings.fireBottom - 80);
-    ammoText.position = Vector2(fireButton.position.x - 80, fireButton.position.y - 40);
+    
+    // YENİ: Mermi bilgisi tamamen SAĞ ÜST KÖŞEYE çekildi
+    ammoText.position = Vector2(size.x - 220, 20);
     ammoText.text = networkService.selectedMap == 1 ? "Mermi: ${playerTank.ammo}" : "Mermi: Sınırsız";
 
     if (!isGameOver) {
@@ -432,7 +441,7 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
       if (networkService.selectedMap == 3) {
         if (_gracePeriod > 0) {
-          _gracePeriod -= dt;
+          _gracePeriod -= dt; // Kalkan/Senkron Süresi
         } else if (networkService.isHost && !_roundEndingTriggered) {
           int aliveCount = 0; String? lastAliveId;
           if (!playerTank.isDead) { aliveCount++; lastAliveId = networkService.myId; }
@@ -520,15 +529,14 @@ class TankGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     Wall rightWall = Wall(position: Vector2(w - thickness, 0), size: Vector2(thickness, h), color: wallColor);
     currentWalls.addAll([topWall, bottomWall, leftWall, rightWall]);
 
-    // Engeller (Spawn Noktaları olan X: 80 ve X: 1320'den uzak ve güvenli)
     Wall obs1 = Wall(position: Vector2(300, 200), size: Vector2(200, 30), color: wallColor);
     Wall obs2 = Wall(position: Vector2(300, 570), size: Vector2(200, 30), color: wallColor);
     Wall obs3 = Wall(position: Vector2(900, 200), size: Vector2(200, 30), color: wallColor);
     Wall obs4 = Wall(position: Vector2(900, 570), size: Vector2(200, 30), color: wallColor);
     Wall obs5 = Wall(position: Vector2(685, 150), size: Vector2(30, 150), color: wallColor);
     Wall obs6 = Wall(position: Vector2(685, 500), size: Vector2(30, 150), color: wallColor);
-    Wall obs7 = Wall(position: Vector2(200, 350), size: Vector2(50, 100), color: wallColor); // 150'den 200'e çekildi
-    Wall obs8 = Wall(position: Vector2(1150, 350), size: Vector2(50, 100), color: wallColor); // 1200'den 1150'ye çekildi
+    Wall obs7 = Wall(position: Vector2(200, 350), size: Vector2(50, 100), color: wallColor); 
+    Wall obs8 = Wall(position: Vector2(1150, 350), size: Vector2(50, 100), color: wallColor); 
 
     currentWalls.addAll([obs1, obs2, obs3, obs4, obs5, obs6, obs7, obs8]);
     world.addAll(currentWalls);

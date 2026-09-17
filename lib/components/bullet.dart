@@ -129,6 +129,31 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
     if (other is Tank) {
       if (_hasHitTank) return;
 
+      // YENİ: DOST ATEŞİ KORUMASI (Futbol ve Boya Savaşı için)
+      if (gameRef.networkService.selectedMap == 4 || gameRef.networkService.selectedMap == 5) {
+        int ownerTeam = -1;
+        if (ownerId == gameRef.networkService.myId) {
+          ownerTeam = gameRef.networkService.myTeam;
+        } else {
+          final enemyOwner = gameRef.enemies[ownerId];
+          if (enemyOwner != null) {
+            ownerTeam = enemyOwner.team;
+          } else {
+            for (var p in gameRef.networkService.lobbyPlayers) {
+              if (p['id'] == ownerId) {
+                ownerTeam = p['team'] ?? 0;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Eğer mermiyi atan takım ile vurulan (local) tankın takımı aynıysa mermi içinden geçer (hasar vermez)
+        if (ownerTeam != -1 && ownerTeam == other.team) {
+          return;
+        }
+      }
+
       if (ownerId == other.networkService.myId) {
         if (gameRef.networkService.selectedMap == 3 && (_bounceCount > 0 || _lifeTime > 0.2 || bulletType == 3)) {
           _hasHitTank = true;

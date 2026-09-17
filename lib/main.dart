@@ -156,9 +156,9 @@ class _MainMenuState extends State<MainMenu> {
               });
             },
             child: Container(
-              width: 100, height: 100,
+              width: 140, height: 140, // YENİ: Joystick boyutu büyütüldü
               decoration: BoxDecoration(color: Colors.blue.withAlpha(100), shape: BoxShape.circle),
-              child: Center(child: Container(width: 40, height: 40, decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle))),
+              child: Center(child: Container(width: 60, height: 60, decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle))),
             ),
           ),
         ),
@@ -226,7 +226,7 @@ class _MainMenuState extends State<MainMenu> {
       if (id == 2) return "Buzul";
       if (id == 3) return "Arena (Hayatta Kalma)";
       if (id == 4) return "Futbol (Takım)"; 
-      if (id == 5) return "Boya Savaşı (Takım)"; // YENİ EKLENDİ
+      if (id == 5) return "Boya Savaşı (Takım)"; 
       return "Klasik";
     }
 
@@ -260,7 +260,7 @@ class _MainMenuState extends State<MainMenu> {
                   DropdownMenuItem(value: 2, child: Text("Buzul")),
                   DropdownMenuItem(value: 3, child: Text("Arena")), 
                   DropdownMenuItem(value: 4, child: Text("Futbol")), 
-                  DropdownMenuItem(value: 5, child: Text("Boya Savaşı")), // YENİ
+                  DropdownMenuItem(value: 5, child: Text("Boya Savaşı")), 
                 ],
                 onChanged: (val) {
                   int newMap = val ?? 0;
@@ -276,11 +276,16 @@ class _MainMenuState extends State<MainMenu> {
                   DropdownMenuItem(value: 3, child: Text("3 El")),
                   DropdownMenuItem(value: 5, child: Text("5 El")),
                   DropdownMenuItem(value: 10, child: Text("10 El")),
+                  DropdownMenuItem(value: 10, child: Text("20 El")),
+                  DropdownMenuItem(value: 10, child: Text("50 El")),
+                  DropdownMenuItem(value: 10, child: Text("100 El")),
                 ]
                 : const [
                   DropdownMenuItem(value: 60, child: Text("1 Dakika")),
                   DropdownMenuItem(value: 120, child: Text("2 Dakika")),
                   DropdownMenuItem(value: 300, child: Text("5 Dakika")),
+                  DropdownMenuItem(value: 300, child: Text("10 Dakika")),
+                  DropdownMenuItem(value: 300, child: Text("15 Dakika")),
                 ],
                 onChanged: (val) {
                   _networkService.updateLobbySettings(_networkService.selectedMap, val ?? 60);
@@ -310,7 +315,6 @@ class _MainMenuState extends State<MainMenu> {
             itemBuilder: (context, index) => ListTile(
               leading: const Icon(Icons.person),
               title: Text(_players[index]['name']),
-              // YENİ: Boya savaşı ve Futbol takım modlarıdır, host düzenleyebilir.
               trailing: (_networkService.selectedMap == 4 || _networkService.selectedMap == 5)
               ? ElevatedButton(
                   onPressed: _networkService.isHost ? () {
