@@ -64,3 +64,25 @@ Powered by the Flame engine's `CollisionCallbacks`. Bullets utilize AABB (Axis-A
 1. Clone the repository:
    ```bash
    git clone [https://github.com/YOUR_USERNAME/perfectum-tanks.git](https://github.com/YOUR_USERNAME/perfectum-tanks.git)
+   ```
+   Navigate to the project directory:
+
+Bash
+cd perfectum-tanks
+Get dependencies:
+
+Bash
+flutter pub get
+Run the game:
+
+Bash
+flutter run
+👨‍💻 Development & Credits
+Developed by: Muhammet Ali Öztürk
+
+Team: Perfectum Ventus
+
+Built with passion for real-time mobile multiplayer architectures. Feel free to open issues or submit pull requests if you want to contribute to the project!
+
+📄 License
+This project is licensed under the MIT License - see the LICENSE file for details.
