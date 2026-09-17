@@ -16,7 +16,7 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   bool isDead = false;
   int ammo = -1;
   int nextShotType = 0; 
-  int team = 0; // YENİ: Takım numarası
+  int team = 0; 
 
   bool isShielded = true; 
   double shieldTimer = 5.0; 
@@ -28,7 +28,7 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   late final double nameWidth;
 
   final Paint trackPaint = Paint()..color = Colors.black87;
-  late final Paint bodyPaint; // YENİ: Dinamik Takım Rengi
+  late final Paint bodyPaint; 
   final Paint turretPaint = Paint()..color = const Color.fromARGB(255, 20, 80, 20);
   final Paint barrelPaint = Paint()..color = Colors.grey.shade400..strokeWidth = 4;
   
@@ -47,8 +47,7 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     _previousPosition = position.clone();
     team = networkService.myTeam;
     
-    // Kendi tankın her zaman takımınla aynı olan net YEŞİL renktedir
-    bodyPaint = Paint()..color = Colors.green.shade600;
+    bodyPaint = Paint()..color = Colors.green.shade600; // Kendi tankın her zaman YEŞİL
 
     if (networkService.selectedMap == 3) { maxHealth = 1; health = 1; } 
     else { maxHealth = 5; health = 5; }
@@ -85,7 +84,6 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     isDead = true;
     networkService.sendDied(killerId);
     
-    // YENİ: Top sendeyken ölürsen top düşer
     if (gameRef.ball?.ownerId == networkService.myId) {
       gameRef.ball?.shootBall(angle);
       networkService.sendShootBall(position.x, position.y, angle);
@@ -104,8 +102,8 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
       
       if (networkService.selectedMap == 1) ammo = 10;
       
-      // YENİ: Futbol modundaysa kalede doğ
-      spawnPosition = gameRef.getSpawnPoint(networkService.mySpawnIndex);
+      // YENİ: Doğarken kendi takımının bölgesine spawn olur
+      spawnPosition = gameRef.getSpawnPoint(networkService.mySpawnIndex, teamId: networkService.myTeam);
       position = spawnPosition.clone();
       _previousPosition = spawnPosition.clone();
       _currentVelocity = Vector2.zero();
@@ -131,7 +129,6 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     bool isIce = networkService.selectedMap == 2;
     double maxSpeed = isIce ? 220.0 : 150.0;
     
-    // Top bendeyse hızım %15 düşer ki pas atmaya teşvik etsin
     if (gameRef.ball?.ownerId == networkService.myId) maxSpeed *= 0.85; 
 
     if (isMoving) {

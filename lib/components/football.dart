@@ -9,7 +9,7 @@ import 'wall.dart';
 class Football extends PositionComponent with CollisionCallbacks, HasGameRef<TankGame> {
   String? ownerId;
   Vector2 velocity = Vector2.zero();
-  final double speed = 500.0; // Top mermiden daha hızlı uçar
+  final double speed = 500.0; 
   
   final Paint _paint = Paint()..color = Colors.white;
   final Paint _outline = Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 2;
@@ -40,7 +40,6 @@ class Football extends PositionComponent with CollisionCallbacks, HasGameRef<Tan
       else owner = gameRef.enemies[ownerId];
 
       if (owner != null) {
-        // Tankın dönüş açısına göre topu namlunun tam ucunda tut
         final offset = Vector2(sin(owner.angle) * 35, -cos(owner.angle) * 35);
         position = owner.position + offset;
       } else {
@@ -48,14 +47,14 @@ class Football extends PositionComponent with CollisionCallbacks, HasGameRef<Tan
       }
     } else {
       position += velocity * dt;
-      velocity *= 0.98; // Çimde yavaşlama sürtünmesi
+      velocity *= 0.98; 
     }
   }
 
   @override
   void onCollision(Set<Vector2> intersectionPoints, PositionComponent other) {
     super.onCollision(intersectionPoints, other);
-    if (ownerId != null) return; // Top birindeyken çarpışma kapatılır
+    if (ownerId != null) return; 
 
     if (other is Tank) {
       if (other == gameRef.playerTank && !other.isDead) {
@@ -63,7 +62,6 @@ class Football extends PositionComponent with CollisionCallbacks, HasGameRef<Tan
         gameRef.networkService.sendCatchBall();
       }
     } else if (other is Wall && !other.isGoal) {
-      // Normal duvarlara çarpıp sekmesi
       position -= velocity.normalized() * 5.0;
       Rect ballRect = Rect.fromCenter(center: position.toOffset(), width: size.x, height: size.y);
       Rect wallRect = other.toRect();
@@ -77,8 +75,8 @@ class Football extends PositionComponent with CollisionCallbacks, HasGameRef<Tan
       if (minDist == leftDist || minDist == rightDist) velocity.x = -velocity.x;
       else velocity.y = -velocity.y;
     } else if (other is Wall && other.isGoal) {
-      // GOL!
       if (gameRef.networkService.isHost) {
+        // A Takımı (Takım 0) sağ kaleye (TeamId 1) gol atarsa -> 0 skoru kazanır
         int scoringTeam = other.teamId == 0 ? 1 : 0; 
         gameRef.networkService.sendGoal(scoringTeam);
         gameRef.handleGoal(scoringTeam);

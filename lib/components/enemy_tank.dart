@@ -17,7 +17,7 @@ class EnemyTank extends PositionComponent with CollisionCallbacks, HasGameRef<Ta
   late final double nameWidth;
 
   final Paint trackPaint = Paint()..color = Colors.black87;
-  late final Paint bodyPaint; // YENİ: Dinamik Takım Rengi
+  late final Paint bodyPaint; 
   final Paint turretPaint = Paint()..color = const Color.fromARGB(255, 80, 20, 20);
   final Paint barrelPaint = Paint()..color = Colors.grey.shade400..strokeWidth = 4;
   
@@ -43,11 +43,11 @@ class EnemyTank extends PositionComponent with CollisionCallbacks, HasGameRef<Ta
     maxHealth = gameRef.networkService.selectedMap == 3 ? 1 : 5;
     health = maxHealth;
     
-    // YENİ: Takım Arkadaşıysa Yeşil (Kendi tankın gibi), Düşmansa Kırmızı
-    if (gameRef.networkService.selectedMap == 4 && team == gameRef.networkService.myTeam) {
+    // YENİ: Aynı takımda (Müttefik) iseler Yeşil, Rakip ise Kırmızı çizilir
+    if ((gameRef.networkService.selectedMap == 4 || gameRef.networkService.selectedMap == 5) && team == gameRef.networkService.myTeam) {
       bodyPaint = Paint()..color = Colors.green.shade600;
     } else {
-      bodyPaint = Paint()..color = const Color.fromARGB(255, 139, 34, 34);
+      bodyPaint = Paint()..color = const Color.fromARGB(255, 139, 34, 34); // Kırmızı
     }
   }
 

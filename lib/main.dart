@@ -225,7 +225,8 @@ class _MainMenuState extends State<MainMenu> {
       if (id == 1) return "Çöl";
       if (id == 2) return "Buzul";
       if (id == 3) return "Arena (Hayatta Kalma)";
-      if (id == 4) return "Futbol (Takım)"; // YENİ
+      if (id == 4) return "Futbol (Takım)"; 
+      if (id == 5) return "Boya Savaşı (Takım)"; // YENİ EKLENDİ
       return "Klasik";
     }
 
@@ -258,7 +259,8 @@ class _MainMenuState extends State<MainMenu> {
                   DropdownMenuItem(value: 1, child: Text("Çöl")),
                   DropdownMenuItem(value: 2, child: Text("Buzul")),
                   DropdownMenuItem(value: 3, child: Text("Arena")), 
-                  DropdownMenuItem(value: 4, child: Text("Futbol")), // YENİ
+                  DropdownMenuItem(value: 4, child: Text("Futbol")), 
+                  DropdownMenuItem(value: 5, child: Text("Boya Savaşı")), // YENİ
                 ],
                 onChanged: (val) {
                   int newMap = val ?? 0;
@@ -308,8 +310,8 @@ class _MainMenuState extends State<MainMenu> {
             itemBuilder: (context, index) => ListTile(
               leading: const Icon(Icons.person),
               title: Text(_players[index]['name']),
-              // YENİ: Futbol modu seçiliyse Host takımları düzenleyebilir
-              trailing: _networkService.selectedMap == 4 
+              // YENİ: Boya savaşı ve Futbol takım modlarıdır, host düzenleyebilir.
+              trailing: (_networkService.selectedMap == 4 || _networkService.selectedMap == 5)
               ? ElevatedButton(
                   onPressed: _networkService.isHost ? () {
                     _networkService.toggleTeam(_players[index]['id']);

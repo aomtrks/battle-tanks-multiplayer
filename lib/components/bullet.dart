@@ -12,7 +12,7 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
   final bool isEnemy;
   final String ownerId;
   final bool isArena; 
-  final int bulletType; // 0: Normal, 3: Roket, 4: Lazer
+  final int bulletType; 
 
   late final Paint _bulletPaint;
   bool _hasHitTank = false; 
@@ -27,17 +27,14 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
     this.angle = angle;
     
     if (bulletType == 4) {
-      // Lazer - Tank boyutunda (28x28), Aşırı Hızlı
       size = Vector2(28, 28);
       _bulletPaint = Paint()..color = Colors.cyanAccent;
       speed = 800.0;
     } else if (bulletType == 3) {
-      // Roket - Mor ve Yavaş (Kaçabilmek için)
       size = Vector2(16, 16);
       _bulletPaint = Paint()..color = Colors.purpleAccent;
       speed = 350.0;
     } else {
-      // Normal Mermi
       size = isArena ? Vector2(12, 12) : Vector2(8, 8);
       _bulletPaint = isArena ? (Paint()..color = Colors.black) : (Paint()..color = isEnemy ? Colors.orange : Colors.yellow..maskFilter = const MaskFilter.blur(BlurStyle.solid, 2));
       speed = 400.0;
@@ -57,7 +54,6 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
     position += velocity * dt;
     _lifeTime += dt;
 
-    // Normal mermiler süre sınırına tabidir, ROKET (3) sonsuza kadar yaşar.
     if (bulletType != 3) {
       double maxLife = (gameRef.networkService.selectedMap == 3) ? 10.0 : 3.5;
       if (_lifeTime >= maxLife) {
@@ -66,14 +62,12 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
       }
     }
 
-    // ROKET YÖNLENDİRME (Homing Missile) - 2 Saniye Sonra Aktif
     if (bulletType == 3) {
       _homingTimer += dt;
       if (_homingTimer > 2.0) {
         PositionComponent? target;
         double minDist = double.infinity;
         
-        // Arenadaki en yakın tankı bul (Kendin de dahil)
         if (!gameRef.playerTank.isDead) {
           double d = position.distanceTo(gameRef.playerTank.position);
           if (d < minDist) { minDist = d; target = gameRef.playerTank; }
@@ -85,13 +79,9 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
           }
         }
         
-        // Profesyonel Takip: Hedefe kilitlen ve ivmelenerek dön
         if (target != null) {
           Vector2 desiredVelocity = (target.position - position).normalized() * speed;
-          
-          // Havada kaldıkça dönüş yeteneği (turnRate) keskinleşir, kaçmayı imkansızlaştırır
           double turnRate = 2.0 + ((_homingTimer - 2.0) * 1.5); 
-          
           velocity.lerp(desiredVelocity, dt * turnRate); 
           angle = atan2(velocity.y, velocity.x) + pi/2;
         }
@@ -109,9 +99,8 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
     super.onCollision(intersectionPoints, other);
     
     if (other is Wall) {
-      if (bulletType == 4) return; // LAZER DUVARIN İÇİNDEN GEÇER
+      if (bulletType == 4) return; 
 
-      // Normal mermiler 3 sekmede yok olur. Roket (3) bir tanka çarpana kadar sonsuz seker.
       if (bulletType != 3 && _bounceCount >= _maxBounces) {
         removeFromParent();
         return;
@@ -130,11 +119,8 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
       
       double minDist = [leftDist, rightDist, topDist, bottomDist].reduce(min);
       
-      if (minDist == leftDist || minDist == rightDist) {
-        velocity.x = -velocity.x; 
-      } else {
-        velocity.y = -velocity.y; 
-      }
+      if (minDist == leftDist || minDist == rightDist) velocity.x = -velocity.x; 
+      else velocity.y = -velocity.y; 
       
       angle = atan2(velocity.y, velocity.x) + pi/2;
       return; 
@@ -144,7 +130,6 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
       if (_hasHitTank) return;
 
       if (ownerId == other.networkService.myId) {
-        // Dost Ateşi Kontrolü
         if (gameRef.networkService.selectedMap == 3 && (_bounceCount > 0 || _lifeTime > 0.2 || bulletType == 3)) {
           _hasHitTank = true;
           other.takeDamage(ownerId);
