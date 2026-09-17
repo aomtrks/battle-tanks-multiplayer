@@ -1,5 +1,7 @@
 # Vindex: UDP Multiplayer Battle Game
 
+![Perfectum Tanks Kapak](assets/logo.png)
+
 A fast-paced, real-time local multiplayer tank battle game built with **Flutter** and the **Flame Engine**. 
 
 Unlike standard mobile games relying on BaaS or heavy WebSocket servers, this project implements a completely custom **Host-Client networking architecture using Raw UDP Datagram Sockets**. It features zero-cost custom canvas rendering, lag-compensated physics, and multiple highly competitive game modes.
