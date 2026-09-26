@@ -14,7 +14,11 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
   int health = 5;
   late int maxHealth;
   bool isDead = false;
+  
   int ammo = -1;
+  bool isReloading = false; 
+  double reloadTimer = 0.0; 
+  
   int nextShotType = 0; 
   int team = 0; 
 
@@ -51,7 +55,8 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
 
     if (networkService.selectedMap == 3) { maxHealth = 1; health = 1; } 
     else { maxHealth = 5; health = 5; }
-    if (networkService.selectedMap == 1) ammo = 10; 
+    
+    if (networkService.selectedMap == 1 || networkService.selectedMap == 4 || networkService.selectedMap == 5) ammo = 10; 
 
     const textStyle = TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold, shadows: [Shadow(blurRadius: 3.0, color: Colors.black, offset: Offset(1.0, 1.0))]);
     nameTextPaint = TextPaint(style: textStyle);
@@ -66,7 +71,6 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
     networkService.sendShield(true); 
   }
   
-  // YENİ: Gol sonrası veya özel durumlarda tankı güvenle ve anında ışınlar
   void teleportToSpawn(Vector2 newSpawn) {
     spawnPosition = newSpawn;
     position = spawnPosition.clone();
@@ -102,14 +106,18 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
 
     gameRef.showScoreboard();
 
-    Future.delayed(const Duration(milliseconds: 1500), () {
+    Future.delayed(const Duration(milliseconds: 2000), () {
       health = maxHealth;
       isShielded = true; 
       shieldTimer = 5.0;
       nextShotType = 0;
       networkService.sendShield(true);
       
-      if (networkService.selectedMap == 1) ammo = 10;
+      if (networkService.selectedMap == 1 || networkService.selectedMap == 4 || networkService.selectedMap == 5) {
+        ammo = 10;
+        isReloading = false;
+        reloadTimer = 0.0;
+      }
       
       spawnPosition = gameRef.getSpawnPoint(networkService.mySpawnIndex, teamId: networkService.myTeam);
       position = spawnPosition.clone();
@@ -124,13 +132,29 @@ class Tank extends PositionComponent with CollisionCallbacks, HasGameRef<TankGam
 
   @override
   void update(double dt) {
+    //   Harita yüklenirken tankın hareket etmesini veya ağa veri atmasını durdur
+    if (gameRef.isLoadingMap) return; 
     if (isDead) return;
+    
     _previousPosition = position.clone();
     super.update(dt);
     
     if (isShielded) {
       shieldTimer -= dt;
       if (shieldTimer <= 0) { isShielded = false; networkService.sendShield(false); }
+    }
+    
+    if (networkService.selectedMap == 4 || networkService.selectedMap == 5) {
+      if (isReloading) {
+        reloadTimer -= dt;
+        if (reloadTimer <= 0) {
+          isReloading = false;
+          ammo = 10;
+        }
+      } else if (ammo == 0) {
+        isReloading = true;
+        reloadTimer = 5.0; 
+      }
     }
 
     bool isMoving = !joystick.delta.isZero();

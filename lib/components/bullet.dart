@@ -9,9 +9,10 @@ import 'wall.dart';
 class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankGame> {
   late double speed;
   late Vector2 velocity;
-  final bool isEnemy;
   final String ownerId;
+  final bool isAlly; //   Takım mermilerini ayırmak için
   final bool isArena; 
+  final bool isTeamMode;
   final int bulletType; 
 
   late final Paint _bulletPaint;
@@ -22,8 +23,15 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
   double _lifeTime = 0.0;
   double _homingTimer = 0.0;
 
-  Bullet({required Vector2 position, required double angle, required this.ownerId, this.isEnemy = false, this.isArena = false, this.bulletType = 0})
-      : super(position: position, anchor: Anchor.center) {
+  Bullet({
+    required Vector2 position, 
+    required double angle, 
+    required this.ownerId, 
+    this.isAlly = true, 
+    this.isArena = false, 
+    this.isTeamMode = false,
+    this.bulletType = 0
+  }) : super(position: position, anchor: Anchor.center) {
     this.angle = angle;
     
     if (bulletType == 4) {
@@ -35,8 +43,18 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
       _bulletPaint = Paint()..color = Colors.purpleAccent;
       speed = 350.0;
     } else {
-      size = isArena ? Vector2(12, 12) : Vector2(8, 8);
-      _bulletPaint = isArena ? (Paint()..color = Colors.black) : (Paint()..color = isEnemy ? Colors.orange : Colors.yellow..maskFilter = const MaskFilter.blur(BlurStyle.solid, 2));
+      // Takım ve Arena modlarında (Map 3, 4, 5) mermi daha büyük
+      size = (isArena || isTeamMode) ? Vector2(12, 12) : Vector2(8, 8);
+      
+      if (isArena) {
+        // Sadece Arena (Map 3) mermileri siyah olur
+        _bulletPaint = Paint()..color = Colors.black;
+      } else {
+        //   Müttefik isen (Takımın veya Kendin) mermi SARI, Düşman ise TURUNCU
+        _bulletPaint = Paint()
+          ..color = isAlly ? Colors.yellow : Colors.orange
+          ..maskFilter = const MaskFilter.blur(BlurStyle.solid, 2);
+      }
       speed = 400.0;
     }
     
@@ -129,7 +147,6 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
     if (other is Tank) {
       if (_hasHitTank) return;
 
-      // YENİ: DOST ATEŞİ KORUMASI (Futbol ve Boya Savaşı için)
       if (gameRef.networkService.selectedMap == 4 || gameRef.networkService.selectedMap == 5) {
         int ownerTeam = -1;
         if (ownerId == gameRef.networkService.myId) {
@@ -148,7 +165,6 @@ class Bullet extends PositionComponent with CollisionCallbacks, HasGameRef<TankG
           }
         }
         
-        // Eğer mermiyi atan takım ile vurulan (local) tankın takımı aynıysa mermi içinden geçer (hasar vermez)
         if (ownerTeam != -1 && ownerTeam == other.team) {
           return;
         }

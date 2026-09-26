@@ -43,11 +43,10 @@ class EnemyTank extends PositionComponent with CollisionCallbacks, HasGameRef<Ta
     maxHealth = gameRef.networkService.selectedMap == 3 ? 1 : 5;
     health = maxHealth;
     
-    // YENİ: Aynı takımda (Müttefik) iseler Yeşil, Rakip ise Kırmızı çizilir
     if ((gameRef.networkService.selectedMap == 4 || gameRef.networkService.selectedMap == 5) && team == gameRef.networkService.myTeam) {
-      bodyPaint = Paint()..color = Colors.green.shade600;
+      bodyPaint = Paint()..color = Colors.blue.shade600; 
     } else {
-      bodyPaint = Paint()..color = const Color.fromARGB(255, 139, 34, 34); // Kırmızı
+      bodyPaint = Paint()..color = const Color.fromARGB(255, 139, 34, 34); 
     }
   }
 
@@ -81,6 +80,8 @@ class EnemyTank extends PositionComponent with CollisionCallbacks, HasGameRef<Ta
 
   @override
   void update(double dt) {
+    //   Harita yüklenirken düşmanların da lokal hareketi durdurulur
+    if (gameRef.isLoadingMap) return; 
     if (isDead) return;
     super.update(dt);
 

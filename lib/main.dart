@@ -156,7 +156,7 @@ class _MainMenuState extends State<MainMenu> {
               });
             },
             child: Container(
-              width: 140, height: 140, // YENİ: Joystick boyutu büyütüldü
+              width: 140, height: 140, //   Joystick boyutu büyütüldü
               decoration: BoxDecoration(color: Colors.blue.withAlpha(100), shape: BoxShape.circle),
               child: Center(child: Container(width: 60, height: 60, decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle))),
             ),
@@ -276,16 +276,16 @@ class _MainMenuState extends State<MainMenu> {
                   DropdownMenuItem(value: 3, child: Text("3 El")),
                   DropdownMenuItem(value: 5, child: Text("5 El")),
                   DropdownMenuItem(value: 10, child: Text("10 El")),
-                  DropdownMenuItem(value: 10, child: Text("20 El")),
-                  DropdownMenuItem(value: 10, child: Text("50 El")),
-                  DropdownMenuItem(value: 10, child: Text("100 El")),
+                  DropdownMenuItem(value: 20, child: Text("20 El")),
+                  DropdownMenuItem(value: 50, child: Text("50 El")),
+                  DropdownMenuItem(value: 100, child: Text("100 El")),
                 ]
                 : const [
                   DropdownMenuItem(value: 60, child: Text("1 Dakika")),
                   DropdownMenuItem(value: 120, child: Text("2 Dakika")),
                   DropdownMenuItem(value: 300, child: Text("5 Dakika")),
-                  DropdownMenuItem(value: 300, child: Text("10 Dakika")),
-                  DropdownMenuItem(value: 300, child: Text("15 Dakika")),
+                  DropdownMenuItem(value: 600, child: Text("10 Dakika")),
+                  DropdownMenuItem(value: 900, child: Text("15 Dakika")),
                 ],
                 onChanged: (val) {
                   _networkService.updateLobbySettings(_networkService.selectedMap, val ?? 60);

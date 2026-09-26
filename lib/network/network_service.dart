@@ -231,7 +231,7 @@ class NetworkService {
   void sendCollectLoot(String lootId) => _routeMessage({'action': 'collect_loot', 'id': myId, 'lootId': lootId});
   void sendShield(bool state) => _routeMessage({'action': 'shield', 'id': myId, 'state': state}); 
   
-  // YENİ: Paket kaybına karşı 3 kez yollar (Yükleme hatası engellenir)
+  //   Paket kaybına karşı 3 kez yollar (Yükleme hatası engellenir)
   void sendNewRound(int seed, int rows, int cols, int currentRound) {
     for (int i = 0; i < 3; i++) {
       _routeMessage({'action': 'new_round', 'id': myId, 'seed': seed, 'rows': rows, 'cols': cols, 'round': currentRound});

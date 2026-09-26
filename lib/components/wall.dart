@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 
 class Wall extends PositionComponent {
   final Color color;
-  final bool isGoal; // YENİ: Bu duvar bir kale mi?
-  final int teamId;  // YENİ: Kale hangi takıma ait?
+  final bool isGoal; //   Bu duvar bir kale mi?
+  final int teamId;  //   Kale hangi takıma ait?
   
   late final Paint _paint;
 
